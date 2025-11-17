@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum, CommandFactory};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -99,6 +99,12 @@ pub enum Commands {
 
     #[command(about = "Interactive project and session viewer")]
     Tui,
+
+    #[command(about = "Generate shell completions", hide = true)]
+    Completions {
+        #[arg(help = "Shell to generate completions for")]
+        shell: Shell,
+    },
 }
 
 #[derive(Subcommand)]
@@ -249,4 +255,27 @@ pub enum ConfigAction {
     
     #[command(about = "Reset configuration to defaults")]
     Reset,
+}
+
+#[derive(ValueEnum, Clone, Debug)]
+pub enum Shell {
+    Bash,
+    Zsh,
+    Fish,
+    PowerShell,
+}
+
+impl Cli {
+    pub fn generate_completions(shell: Shell) {
+        use clap_complete::{generate, shells};
+        use std::io;
+
+        let mut cmd = Self::command();
+        match shell {
+            Shell::Bash => generate(shells::Bash, &mut cmd, "vibe", &mut io::stdout()),
+            Shell::Zsh => generate(shells::Zsh, &mut cmd, "vibe", &mut io::stdout()),
+            Shell::Fish => generate(shells::Fish, &mut cmd, "vibe", &mut io::stdout()),
+            Shell::PowerShell => generate(shells::PowerShell, &mut cmd, "vibe", &mut io::stdout()),
+        }
+    }
 }

@@ -1,4 +1,4 @@
-use super::{Cli, Commands, ProjectAction, SessionAction, TagAction, ConfigAction};
+use super::{Cli, Commands, ProjectAction, SessionAction, TagAction, ConfigAction, Shell};
 use crate::utils::ipc::{IpcClient, IpcMessage, IpcResponse, get_socket_path, is_daemon_running};
 use crate::db::queries::{ProjectQueries, SessionQueries, TagQueries};
 use crate::cli::reports::{ReportGenerator, print_report};
@@ -86,6 +86,11 @@ pub async fn handle_command(cli: Cli) -> Result<()> {
         
         Commands::Tui => {
             println!("Interactive TUI - Coming soon! Use 'vibe session current' and 'vibe report' for basic info.");
+            Ok(())
+        }
+
+        Commands::Completions { shell } => {
+            Cli::generate_completions(shell);
             Ok(())
         }
     }

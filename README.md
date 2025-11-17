@@ -25,12 +25,22 @@ A beautiful, intelligent time tracking application that automatically detects yo
 
 ### Installation
 
-```bash
-# Install from crates.io
-cargo install vibe
+#### 🍺 Homebrew (Recommended)
 
-# Or build from source
-git clone https://github.com/yourusername/vibe.git
+```bash
+brew install own-path/tap/vibe
+```
+
+#### 📦 Cargo
+
+```bash
+cargo install vibe
+```
+
+#### 🔧 From Source
+
+```bash
+git clone https://github.com/own-path/vibe.git
 cd vibe
 cargo install --path .
 ```
