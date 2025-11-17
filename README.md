@@ -25,10 +25,16 @@ A beautiful, intelligent time tracking application that automatically detects yo
 
 ### Installation
 
-#### 🍺 Homebrew (Recommended)
+#### 🐍 pip (Easiest)
 
 ```bash
-brew install own-path/tap/vibe
+pip install vibe-cli
+```
+
+#### 🍺 Homebrew
+
+```bash
+brew tap own-path/tap && brew install vibe
 ```
 
 #### 📦 Cargo
