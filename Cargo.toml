@@ -1,28 +1,28 @@
 [package]
-name = "vibe"
+name = "tempo"
 version = "0.1.0"
 edition = "2021"
-authors = ["Vibe Contributors"]
+authors = ["Tempo Contributors"]
 description = "Automatic project time tracking CLI tool with beautiful terminal interface"
 license = "MIT"
-repository = "https://github.com/own-path/vibe"
-homepage = "https://github.com/own-path/vibe"
-documentation = "https://docs.rs/vibe"
+repository = "https://github.com/own-path/tempo"
+homepage = "https://github.com/own-path/tempo"
+documentation = "https://docs.rs/tempo"
 readme = "README.md"
 keywords = ["time-tracking", "productivity", "cli", "terminal", "tui"]
 categories = ["command-line-utilities", "development-tools"]
 exclude = ["examples/", ".github/", "docs/"]
 
 [lib]
-name = "vibe"
+name = "tempo"
 path = "src/lib.rs"
 
 [[bin]]
-name = "vibe"
+name = "tempo"
 path = "src/main.rs"
 
 [[bin]]
-name = "vibe-daemon"
+name = "tempo-daemon"
 path = "src/daemon/main.rs"
 
 [dependencies]

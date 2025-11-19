@@ -1,5 +1,5 @@
 use super::state::SharedDaemonState;
-use vibe::utils::ipc::{read_ipc_message, write_ipc_response, IpcMessage, IpcResponse, IpcServer};
+use tempo::utils::ipc::{read_ipc_message, write_ipc_response, IpcMessage, IpcResponse, IpcServer};
 use anyhow::Result;
 use log::{debug, info, warn, error};
 use std::path::PathBuf;
@@ -159,7 +159,7 @@ async fn handle_message(message: IpcMessage, state: &SharedDaemonState) -> IpcRe
                     (chrono::Utc::now() - session.start_time - session.total_paused).num_seconds()
                 };
 
-                IpcResponse::SessionInfo(vibe::utils::ipc::SessionInfo {
+                IpcResponse::SessionInfo(tempo::utils::ipc::SessionInfo {
                     id: session.session_id,
                     project_name: session.project_name.clone(),
                     project_path: session.project_path.clone(),

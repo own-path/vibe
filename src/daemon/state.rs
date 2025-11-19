@@ -1,6 +1,6 @@
-use vibe::db::{Database, queries::{ProjectQueries, SessionQueries}};
-use vibe::models::{Project, Session, SessionContext};
-use vibe::utils::paths::{canonicalize_path, detect_project_name, get_git_hash, is_git_repository, has_vibe_marker};
+use tempo::db::{Database, queries::{ProjectQueries, SessionQueries}};
+use tempo::models::{Project, Session, SessionContext};
+use tempo::utils::paths::{canonicalize_path, detect_project_name, get_git_hash, is_git_repository, has_vibe_marker};
 use anyhow::Result;
 use chrono::{DateTime, Utc, Duration};
 use log::{debug, info, warn, error};
@@ -244,7 +244,7 @@ impl DaemonState {
         Ok(project)
     }
 
-    pub fn get_status(&self) -> vibe::utils::ipc::IpcResponse {
+    pub fn get_status(&self) -> tempo::utils::ipc::IpcResponse {
         let active_session = self.active_session.as_ref().map(|session| {
             let duration = if let Some(paused_at) = session.paused_at {
                 // If paused, calculate duration up to pause time
@@ -254,7 +254,7 @@ impl DaemonState {
                 (Utc::now() - session.start_time - session.total_paused).num_seconds()
             };
 
-            vibe::utils::ipc::SessionInfo {
+            tempo::utils::ipc::SessionInfo {
                 id: session.session_id,
                 project_name: session.project_name.clone(),
                 project_path: session.project_path.clone(),
@@ -264,7 +264,7 @@ impl DaemonState {
             }
         });
 
-        vibe::utils::ipc::IpcResponse::Status {
+        tempo::utils::ipc::IpcResponse::Status {
             daemon_running: true,
             active_session,
             uptime: (Utc::now() - self.started_at).num_seconds() as u64,

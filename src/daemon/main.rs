@@ -9,16 +9,16 @@ mod state;
 
 use server::DaemonServer;
 use state::{DaemonState, start_idle_checker};
-use vibe::db::initialize_database;
-use vibe::utils::paths::get_data_dir;
-use vibe::utils::ipc::{get_socket_path, write_pid_file, remove_pid_file};
+use tempo::db::initialize_database;
+use tempo::utils::paths::get_data_dir;
+use tempo::utils::ipc::{get_socket_path, write_pid_file, remove_pid_file};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
     env_logger::init();
     
-    info!("Starting vibe daemon...");
+    info!("Starting tempo daemon...");
 
     // Write PID file
     if let Err(e) = write_pid_file() {
@@ -64,7 +64,7 @@ async fn main() -> Result<()> {
         }
     };
 
-    info!("Vibe daemon started successfully");
+    info!("Tempo daemon started successfully");
 
     // Handle shutdown signals
     let server_task = tokio::spawn(async move {
@@ -93,7 +93,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    info!("Vibe daemon stopped");
+    info!("Tempo daemon stopped");
     Ok(())
 }
 
