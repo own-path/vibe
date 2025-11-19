@@ -7,7 +7,7 @@ A lightweight Rust-powered time tracking application that automatically detects 
 [![Crates.io](https://img.shields.io/crates/v/tempo.svg)](https://crates.io/crates/tempo)
 [![Documentation](https://docs.rs/tempo/badge.svg)](https://docs.rs/tempo)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Build Status](https://github.com/yourusername/vibe/workflows/CI/badge.svg)](https://github.com/yourusername/vibe/actions)
+[![Build Status](https://github.com/yourusername/vibe/workflows/CI/badge.svg)](https://github.com/own-path/vibe/actions)
 
 ---
 
