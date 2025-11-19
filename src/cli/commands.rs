@@ -2191,23 +2191,112 @@ async fn list_workspaces() -> Result<()> {
     Ok(())
 }
 
-async fn add_project_to_workspace(_workspace: String, _project: String) -> Result<()> {
-    println!("\x1b[33m⚠  Workspace project management in development\x1b[0m");
+async fn add_project_to_workspace(workspace: String, project: String) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    // Find workspace by name
+    let workspace_obj = WorkspaceQueries::find_by_name(&db.connection, &workspace)?
+        .ok_or_else(|| anyhow::anyhow!("Workspace '{}' not found", workspace))?;
+    
+    // Find project by name
+    let project_obj = ProjectQueries::find_by_name(&db.connection, &project)?
+        .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", project))?;
+    
+    let workspace_id = workspace_obj.id.unwrap();
+    let project_id = project_obj.id.unwrap();
+    
+    if WorkspaceQueries::add_project(&db.connection, workspace_id, project_id)? {
+        println!("\x1b[32m✓\x1b[0m Added project '\x1b[33m{}\x1b[0m' to workspace '\x1b[33m{}\x1b[0m'", project, workspace);
+    } else {
+        println!("\x1b[33m⚠\x1b[0m Project '\x1b[33m{}\x1b[0m' is already in workspace '\x1b[33m{}\x1b[0m'", project, workspace);
+    }
+    
     Ok(())
 }
 
-async fn remove_project_from_workspace(_workspace: String, _project: String) -> Result<()> {
-    println!("\x1b[33m⚠  Workspace project management in development\x1b[0m");
+async fn remove_project_from_workspace(workspace: String, project: String) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    // Find workspace by name
+    let workspace_obj = WorkspaceQueries::find_by_name(&db.connection, &workspace)?
+        .ok_or_else(|| anyhow::anyhow!("Workspace '{}' not found", workspace))?;
+    
+    // Find project by name
+    let project_obj = ProjectQueries::find_by_name(&db.connection, &project)?
+        .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", project))?;
+    
+    let workspace_id = workspace_obj.id.unwrap();
+    let project_id = project_obj.id.unwrap();
+    
+    if WorkspaceQueries::remove_project(&db.connection, workspace_id, project_id)? {
+        println!("\x1b[32m✓\x1b[0m Removed project '\x1b[33m{}\x1b[0m' from workspace '\x1b[33m{}\x1b[0m'", project, workspace);
+    } else {
+        println!("\x1b[33m⚠\x1b[0m Project '\x1b[33m{}\x1b[0m' was not in workspace '\x1b[33m{}\x1b[0m'", project, workspace);
+    }
+    
     Ok(())
 }
 
-async fn list_workspace_projects(_workspace: String) -> Result<()> {
-    println!("\x1b[33m⚠  Workspace project listing in development\x1b[0m");
+async fn list_workspace_projects(workspace: String) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    // Find workspace by name
+    let workspace_obj = WorkspaceQueries::find_by_name(&db.connection, &workspace)?
+        .ok_or_else(|| anyhow::anyhow!("Workspace '{}' not found", workspace))?;
+    
+    let workspace_id = workspace_obj.id.unwrap();
+    let projects = WorkspaceQueries::list_projects(&db.connection, workspace_id)?;
+    
+    if projects.is_empty() {
+        println!("\x1b[33m⚠\x1b[0m No projects found in workspace '\x1b[33m{}\x1b[0m'", workspace);
+        return Ok(());
+    }
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m        \x1b[1;37mWorkspace Projects\x1b[0m               \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m Workspace: \x1b[33m{:<25}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&workspace, 25));
+    println!("\x1b[36m│\x1b[0m Projects:  \x1b[32m{:<25}\x1b[0m \x1b[36m│\x1b[0m", format!("{} projects", projects.len()));
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    
+    for project in &projects {
+        let status_indicator = if !project.is_archived { "\x1b[32m●\x1b[0m" } else { "\x1b[31m○\x1b[0m" };
+        println!("\x1b[36m│\x1b[0m {} \x1b[37m{:<33}\x1b[0m \x1b[36m│\x1b[0m", 
+                status_indicator, 
+                truncate_string(&project.name, 33));
+    }
+    
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
     Ok(())
 }
 
-async fn delete_workspace(_workspace: String) -> Result<()> {
-    println!("\x1b[33m⚠  Workspace deletion in development\x1b[0m");
+async fn delete_workspace(workspace: String) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    // Find workspace by name
+    let workspace_obj = WorkspaceQueries::find_by_name(&db.connection, &workspace)?
+        .ok_or_else(|| anyhow::anyhow!("Workspace '{}' not found", workspace))?;
+    
+    let workspace_id = workspace_obj.id.unwrap();
+    
+    // Check if workspace has projects
+    let projects = WorkspaceQueries::list_projects(&db.connection, workspace_id)?;
+    if !projects.is_empty() {
+        println!("\x1b[33m⚠\x1b[0m Cannot delete workspace '\x1b[33m{}\x1b[0m' - it contains {} project(s). Remove projects first.", 
+                workspace, projects.len());
+        return Ok(());
+    }
+    
+    if WorkspaceQueries::delete(&db.connection, workspace_id)? {
+        println!("\x1b[32m✓\x1b[0m Deleted workspace '\x1b[33m{}\x1b[0m'", workspace);
+    } else {
+        println!("\x1b[31m✗\x1b[0m Failed to delete workspace '\x1b[33m{}\x1b[0m'", workspace);
+    }
+    
     Ok(())
 }
 

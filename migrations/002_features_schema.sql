@@ -101,6 +101,19 @@ CREATE TABLE IF NOT EXISTS categorization_rules (
 
 CREATE INDEX idx_categorization_rules_active ON categorization_rules(is_active);
 
+-- Project-tag associations (many-to-many)
+CREATE TABLE IF NOT EXISTS project_tags (
+    project_id INTEGER NOT NULL,
+    tag_id INTEGER NOT NULL,
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (project_id, tag_id),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_project_tags_project ON project_tags(project_id);
+CREATE INDEX idx_project_tags_tag ON project_tags(tag_id);
+
 -- Calendar events integration
 CREATE TABLE IF NOT EXISTS calendar_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

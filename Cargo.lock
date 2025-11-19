@@ -1251,7 +1251,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tempo"
+name = "tempo-cli"
 version = "0.2.0"
 dependencies = [
  "anyhow",

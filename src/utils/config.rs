@@ -8,10 +8,10 @@ pub fn get_config_dir() -> Result<PathBuf> {
         .or_else(|| dirs::home_dir())
         .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
     
-    let vibe_dir = config_dir.join(".vibe");
-    std::fs::create_dir_all(&vibe_dir)?;
+    let tempo_dir = config_dir.join(".tempo");
+    std::fs::create_dir_all(&tempo_dir)?;
     
-    Ok(vibe_dir)
+    Ok(tempo_dir)
 }
 
 pub fn get_config_path() -> Result<PathBuf> {

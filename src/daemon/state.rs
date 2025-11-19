@@ -1,5 +1,5 @@
-use tempo::db::{Database, queries::{ProjectQueries, SessionQueries}};
-use tempo::models::{Project, Session, SessionContext};
+use tempo::db::{Database, queries::{ProjectQueries, SessionQueries}, advanced_queries::GoalQueries};
+use tempo::models::{Project, Session, SessionContext, GoalStatus};
 use tempo::utils::paths::{canonicalize_path, detect_project_name, get_git_hash, is_git_repository, has_vibe_marker};
 use anyhow::Result;
 use chrono::{DateTime, Utc, Duration};
@@ -169,9 +169,43 @@ impl DaemonState {
         if let Some(session) = &self.active_session {
             info!("Stopping session {} for project {}", session.session_id, session.project_name);
             
+            // Calculate session duration for goal progress
+            let session_duration_hours = if let Some(paused_at) = session.paused_at {
+                (paused_at - session.start_time - session.total_paused).num_seconds() as f64 / 3600.0
+            } else {
+                (Utc::now() - session.start_time - session.total_paused).num_seconds() as f64 / 3600.0
+            };
+            
             // End session in database
             let db = self.db.lock().unwrap();
             SessionQueries::end_session(&db.connection, session.session_id)?;
+            
+            // Update goals for this project with the session duration
+            if session_duration_hours > 0.0 {
+                match GoalQueries::list_by_project(&db.connection, Some(session.project_id)) {
+                    Ok(goals) => {
+                        for goal in goals.iter().filter(|g| g.status == GoalStatus::Active) {
+                            if let Some(goal_id) = goal.id {
+                                match GoalQueries::update_progress(&db.connection, goal_id, session_duration_hours) {
+                                    Ok(true) => {
+                                        info!("Updated goal '{}' progress by {:.2} hours", goal.name, session_duration_hours);
+                                    }
+                                    Ok(false) => {
+                                        debug!("Goal '{}' progress update returned false", goal.name);
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to update goal '{}' progress: {}", goal.name, e);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to fetch goals for automatic progress update: {}", e);
+                    }
+                }
+            }
+            
             drop(db);
             
             // Clear active session

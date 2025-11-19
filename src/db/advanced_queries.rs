@@ -196,6 +196,75 @@ impl WorkspaceQueries {
         
         Ok(workspaces)
     }
+
+    pub fn find_by_name(conn: &Connection, name: &str) -> Result<Option<Workspace>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, name, description, path, created_at, updated_at
+             FROM workspaces WHERE name = ?1"
+        )?;
+        
+        let workspace = stmt.query_row([name], |row| {
+            Ok(Workspace {
+                id: Some(row.get(0)?),
+                name: row.get(1)?,
+                description: row.get(2)?,
+                path: row.get::<_, Option<String>>(3)?.map(|s| s.into()),
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+            })
+        }).optional()?;
+        
+        Ok(workspace)
+    }
+
+    pub fn delete(conn: &Connection, workspace_id: i64) -> Result<bool> {
+        let mut stmt = conn.prepare("DELETE FROM workspaces WHERE id = ?1")?;
+        let changes = stmt.execute([workspace_id])?;
+        Ok(changes > 0)
+    }
+
+    pub fn add_project(conn: &Connection, workspace_id: i64, project_id: i64) -> Result<bool> {
+        let mut stmt = conn.prepare(
+            "INSERT OR IGNORE INTO workspace_projects (workspace_id, project_id)
+             VALUES (?1, ?2)"
+        )?;
+        let changes = stmt.execute(params![workspace_id, project_id])?;
+        Ok(changes > 0)
+    }
+
+    pub fn remove_project(conn: &Connection, workspace_id: i64, project_id: i64) -> Result<bool> {
+        let mut stmt = conn.prepare(
+            "DELETE FROM workspace_projects 
+             WHERE workspace_id = ?1 AND project_id = ?2"
+        )?;
+        let changes = stmt.execute(params![workspace_id, project_id])?;
+        Ok(changes > 0)
+    }
+
+    pub fn list_projects(conn: &Connection, workspace_id: i64) -> Result<Vec<crate::models::Project>> {
+        let mut stmt = conn.prepare(
+            "SELECT p.id, p.name, p.path, p.git_hash, p.created_at, p.updated_at, p.is_archived, p.description
+             FROM projects p 
+             JOIN workspace_projects wp ON p.id = wp.project_id
+             WHERE wp.workspace_id = ?1
+             ORDER BY p.name"
+        )?;
+        
+        let projects = stmt.query_map([workspace_id], |row| {
+            Ok(crate::models::Project {
+                id: Some(row.get(0)?),
+                name: row.get(1)?,
+                path: row.get::<_, String>(2)?.into(),
+                git_hash: row.get(3)?,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+                is_archived: row.get(6)?,
+                description: row.get(7)?,
+            })
+        })?.collect::<Result<Vec<_>, _>>()?;
+        
+        Ok(projects)
+    }
 }
 
 pub struct GitBranchQueries;
