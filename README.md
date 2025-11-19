@@ -5,7 +5,7 @@
 A lightweight Rust-powered time tracking CLI that automatically detects your project context and tracks time across multiple projects. Built for developers who want accurate time tracking without complexity.
 
 [![PyPI](https://img.shields.io/pypi/v/tempo-cli)](https://pypi.org/project/tempo-cli/)
-[![Crates.io](https://img.shields.io/crates/v/tempo.svg)](https://crates.io/crates/tempo)
+[![Crates.io](https://img.shields.io/crates/v/tempo-cli.svg)](https://crates.io/crates/tempo-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Downloads](https://img.shields.io/pypi/dm/tempo-cli)](https://pypi.org/project/tempo-cli/)
 
@@ -43,7 +43,7 @@ tempo session start
 ### Rust
 ```bash
 # Install from crates.io
-cargo install tempo
+cargo install tempo-cli
 
 # Or build from source
 git clone https://github.com/own-path/vibe.git

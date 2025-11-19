@@ -1,20 +1,20 @@
 [package]
-name = "tempo"
+name = "tempo-cli"
 version = "0.2.0"
 edition = "2021"
-authors = ["Tempo Contributors"]
+authors = ["Own Path <brandy.daryl@gmail.com>"]
 description = "Automatic project time tracking CLI tool with beautiful terminal interface"
 license = "MIT"
-repository = "https://github.com/own-path/tempo"
-homepage = "https://github.com/own-path/tempo"
-documentation = "https://docs.rs/tempo"
+repository = "https://github.com/own-path/vibe"
+homepage = "https://github.com/own-path/vibe"
+documentation = "https://docs.rs/tempo-cli"
 readme = "README.md"
 keywords = ["time-tracking", "productivity", "cli", "terminal", "tui"]
 categories = ["command-line-utilities", "development-tools"]
 exclude = ["examples/", ".github/", "docs/"]
 
 [lib]
-name = "tempo"
+name = "tempo_cli"
 path = "src/lib.rs"
 
 [[bin]]
