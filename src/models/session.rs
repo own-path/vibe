@@ -144,33 +144,36 @@ impl Session {
 pub struct SessionEdit {
     pub id: Option<i64>,
     pub session_id: i64,
-    pub field_name: String,
-    pub old_value: Option<String>,
-    pub new_value: String,
+    pub original_start_time: DateTime<Utc>,
+    pub original_end_time: Option<DateTime<Utc>>,
+    pub new_start_time: DateTime<Utc>,
+    pub new_end_time: Option<DateTime<Utc>>,
     pub edit_reason: Option<String>,
-    pub edited_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
 }
 
 impl SessionEdit {
     pub fn new(
         session_id: i64,
-        field_name: String,
-        old_value: Option<String>,
-        new_value: String,
+        original_start_time: DateTime<Utc>,
+        original_end_time: Option<DateTime<Utc>>,
+        new_start_time: DateTime<Utc>,
+        new_end_time: Option<DateTime<Utc>>,
     ) -> Self {
         Self {
             id: None,
             session_id,
-            field_name,
-            old_value,
-            new_value,
+            original_start_time,
+            original_end_time,
+            new_start_time,
+            new_end_time,
             edit_reason: None,
-            edited_at: Utc::now(),
+            created_at: Utc::now(),
         }
     }
 
-    pub fn with_reason(mut self, reason: String) -> Self {
-        self.edit_reason = Some(reason);
+    pub fn with_reason(mut self, reason: Option<String>) -> Self {
+        self.edit_reason = reason;
         self
     }
 }

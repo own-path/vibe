@@ -1,5 +1,7 @@
 use super::state::SharedDaemonState;
 use tempo::utils::ipc::{read_ipc_message, write_ipc_response, IpcMessage, IpcResponse, IpcServer};
+use tempo::models::{Session, SessionContext};
+use tempo::db::queries::{ProjectQueries, SessionQueries};
 use anyhow::Result;
 use log::{debug, info, warn, error};
 use std::path::PathBuf;
@@ -87,9 +89,7 @@ async fn handle_message(message: IpcMessage, state: &SharedDaemonState) -> IpcRe
             let mut state_guard = state.write().await;
             match state_guard.handle_project_entered(path, context).await {
                 Ok(()) => IpcResponse::Ok,
-                Err(e) => IpcResponse::Error { 
-                    message: format!("Failed to handle project entered: {}", e) 
-                }
+                Err(e) => IpcResponse::Error(format!("Failed to handle project entered: {}", e))
             }
         }
 
@@ -97,9 +97,7 @@ async fn handle_message(message: IpcMessage, state: &SharedDaemonState) -> IpcRe
             let mut state_guard = state.write().await;
             match state_guard.handle_project_left(path).await {
                 Ok(()) => IpcResponse::Ok,
-                Err(e) => IpcResponse::Error { 
-                    message: format!("Failed to handle project left: {}", e) 
-                }
+                Err(e) => IpcResponse::Error(format!("Failed to handle project left: {}", e))
             }
         }
 
@@ -109,14 +107,10 @@ async fn handle_message(message: IpcMessage, state: &SharedDaemonState) -> IpcRe
             if let Some(path) = project_path {
                 match state_guard.handle_project_entered(path, context).await {
                     Ok(()) => IpcResponse::Ok,
-                    Err(e) => IpcResponse::Error { 
-                        message: format!("Failed to start session: {}", e) 
-                    }
+                    Err(e) => IpcResponse::Error(format!("Failed to start session: {}", e))
                 }
             } else {
-                IpcResponse::Error { 
-                    message: "Project path required for manual session start".to_string() 
-                }
+                IpcResponse::Error("Project path required for manual session start".to_string())
             }
         }
 
@@ -124,9 +118,7 @@ async fn handle_message(message: IpcMessage, state: &SharedDaemonState) -> IpcRe
             let mut state_guard = state.write().await;
             match state_guard.stop_session().await {
                 Ok(()) => IpcResponse::Ok,
-                Err(e) => IpcResponse::Error { 
-                    message: format!("Failed to stop session: {}", e) 
-                }
+                Err(e) => IpcResponse::Error(format!("Failed to stop session: {}", e))
             }
         }
 
@@ -134,9 +126,7 @@ async fn handle_message(message: IpcMessage, state: &SharedDaemonState) -> IpcRe
             let mut state_guard = state.write().await;
             match state_guard.pause_session().await {
                 Ok(()) => IpcResponse::Ok,
-                Err(e) => IpcResponse::Error { 
-                    message: format!("Failed to pause session: {}", e) 
-                }
+                Err(e) => IpcResponse::Error(format!("Failed to pause session: {}", e))
             }
         }
 
@@ -144,33 +134,135 @@ async fn handle_message(message: IpcMessage, state: &SharedDaemonState) -> IpcRe
             let mut state_guard = state.write().await;
             match state_guard.resume_session().await {
                 Ok(()) => IpcResponse::Ok,
-                Err(e) => IpcResponse::Error { 
-                    message: format!("Failed to resume session: {}", e) 
-                }
+                Err(e) => IpcResponse::Error(format!("Failed to resume session: {}", e))
             }
         }
 
         IpcMessage::GetActiveSession => {
             let state_guard = state.read().await;
             if let Some(session) = &state_guard.active_session {
-                let duration = if let Some(paused_at) = session.paused_at {
-                    (paused_at - session.start_time - session.total_paused).num_seconds()
-                } else {
-                    (chrono::Utc::now() - session.start_time - session.total_paused).num_seconds()
+                // Convert active session to actual Session model
+                let session_model = tempo::models::Session {
+                    id: Some(session.session_id),
+                    project_id: session.project_id,
+                    start_time: session.start_time,
+                    end_time: None,
+                    context: session.context,
+                    paused_duration: session.total_paused,
+                    notes: None,
+                    created_at: session.start_time,
                 };
 
-                IpcResponse::SessionInfo(tempo::utils::ipc::SessionInfo {
-                    id: session.session_id,
-                    project_name: session.project_name.clone(),
-                    project_path: session.project_path.clone(),
-                    start_time: session.start_time,
-                    context: session.context.to_string(),
-                    duration,
-                })
+                IpcResponse::ActiveSession(Some(session_model))
             } else {
-                IpcResponse::Error { 
-                    message: "No active session".to_string() 
+                IpcResponse::ActiveSession(None)
+            }
+        }
+
+        IpcMessage::GetProject(project_id) => {
+            let state_guard = state.read().await;
+            let db = state_guard.db.lock().unwrap();
+            match ProjectQueries::find_by_id(&db.connection, project_id) {
+                Ok(project) => IpcResponse::Project(project),
+                Err(e) => IpcResponse::Error(format!("Failed to get project: {}", e)),
+            }
+        }
+
+        IpcMessage::GetDailyStats(date) => {
+            let state_guard = state.read().await;
+            let db = state_guard.db.lock().unwrap();
+            
+            // Get completed sessions for the day
+            match SessionQueries::list_with_filter(
+                &db.connection, 
+                None, 
+                Some(date),
+                Some(date), 
+                None
+            ) {
+                Ok(sessions) => {
+                    let completed_sessions: Vec<_> = sessions.into_iter()
+                        .filter(|s| s.end_time.is_some())
+                        .collect();
+                    
+                    let sessions_count = completed_sessions.len() as i64;
+                    
+                    let total_seconds: i64 = completed_sessions.iter()
+                        .map(|s| s.current_active_duration().num_seconds())
+                        .sum();
+                    
+                    let avg_seconds = if sessions_count > 0 {
+                        total_seconds / sessions_count
+                    } else {
+                        0
+                    };
+                    
+                    IpcResponse::DailyStats {
+                        sessions_count,
+                        total_seconds,
+                        avg_seconds,
+                    }
                 }
+                Err(e) => IpcResponse::Error(format!("Failed to get daily stats: {}", e)),
+            }
+        }
+
+        IpcMessage::GetSessionMetrics(_session_id) => {
+            let state_guard = state.read().await;
+            match state_guard.get_session_metrics() {
+                Some(metrics) => IpcResponse::SessionMetrics(metrics),
+                None => IpcResponse::Error("No active session".to_string()),
+            }
+        }
+
+        IpcMessage::ActivityHeartbeat => {
+            let mut state_guard = state.write().await;
+            match state_guard.update_activity().await {
+                Ok(()) => IpcResponse::Ok,
+                Err(e) => IpcResponse::Error(format!("Failed to update activity: {}", e)),
+            }
+        }
+
+        IpcMessage::SubscribeToUpdates => {
+            // For now, just confirm subscription
+            // In a full implementation, this would maintain a list of subscribers
+            IpcResponse::SubscriptionConfirmed
+        }
+
+        IpcMessage::UnsubscribeFromUpdates => {
+            IpcResponse::Ok
+        }
+
+        IpcMessage::SwitchProject(project_id) => {
+            let mut state_guard = state.write().await;
+            
+            // Stop current session if active
+            if state_guard.active_session.is_some() {
+                if let Err(e) = state_guard.stop_session().await {
+                    return IpcResponse::Error(format!("Failed to stop current session: {}", e));
+                }
+            }
+            
+            // Start new session for the selected project
+            let project = {
+                let db = state_guard.db.lock().unwrap();
+                match ProjectQueries::find_by_id(&db.connection, project_id) {
+                    Ok(Some(p)) => Some(p),
+                    Ok(None) => None,
+                    Err(e) => return IpcResponse::Error(format!("Database error: {}", e)),
+                }
+            }; // db lock is dropped here
+            
+            match project {
+                Some(project) => {
+                    use tempo::models::SessionContext;
+                    let context = SessionContext::Manual; // Manual switch via TUI
+                    match state_guard.start_session_for_project(project, context).await {
+                        Ok(_) => IpcResponse::Success,
+                        Err(e) => IpcResponse::Error(format!("Failed to start session: {}", e)),
+                    }
+                }
+                None => IpcResponse::Error("Project not found".to_string()),
             }
         }
 

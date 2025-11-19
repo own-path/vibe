@@ -3,6 +3,7 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 
 const MIGRATION_001: &str = include_str!("../../migrations/001_minimal_schema.sql");
+const MIGRATION_002: &str = include_str!("../../migrations/002_features_schema.sql");
 
 pub fn run_migrations(conn: &Connection) -> Result<()> {
     let current_version = get_current_version(conn)?;
@@ -61,6 +62,7 @@ fn get_current_version(conn: &Connection) -> Result<i32> {
 fn get_migrations() -> HashMap<i32, String> {
     let mut migrations = HashMap::new();
     migrations.insert(1, MIGRATION_001.to_string());
+    migrations.insert(2, MIGRATION_002.to_string());
     migrations
 }
 

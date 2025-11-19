@@ -19,6 +19,17 @@ pub enum IpcMessage {
     // Status queries
     GetStatus,
     GetActiveSession,
+    GetProject(i64),
+    GetDailyStats(chrono::NaiveDate),
+    GetSessionMetrics(i64),
+    
+    // Real-time monitoring
+    SubscribeToUpdates,
+    UnsubscribeFromUpdates,
+    ActivityHeartbeat,
+    
+    // Project switching
+    SwitchProject(i64),
     
     // Daemon control
     Ping,
@@ -28,13 +39,24 @@ pub enum IpcMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IpcResponse {
     Ok,
-    Error { message: String },
+    Success,
+    Error(String),
     Status { 
         daemon_running: bool, 
         active_session: Option<SessionInfo>,
         uptime: u64,
     },
+    ActiveSession(Option<crate::models::Session>),
+    Project(Option<crate::models::Project>),
+    DailyStats {
+        sessions_count: i64,
+        total_seconds: i64,
+        avg_seconds: i64,
+    },
+    SessionMetrics(SessionMetrics),
     SessionInfo(SessionInfo),
+    SubscriptionConfirmed,
+    ActivityUpdate(ActivityUpdate),
     Pong,
 }
 
@@ -46,6 +68,36 @@ pub struct SessionInfo {
     pub start_time: chrono::DateTime<chrono::Utc>,
     pub context: String,
     pub duration: i64, // seconds
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionMetrics {
+    pub session_id: i64,
+    pub active_duration: i64, // seconds
+    pub total_duration: i64,  // seconds
+    pub paused_duration: i64, // seconds
+    pub activity_score: f64,  // 0.0 to 1.0
+    pub last_activity: chrono::DateTime<chrono::Utc>,
+    pub productivity_rating: Option<u8>, // 1-5 scale
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActivityUpdate {
+    pub session_id: i64,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub event_type: ActivityEventType,
+    pub duration_delta: i64, // Change in active time since last update
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ActivityEventType {
+    SessionStarted,
+    SessionPaused,
+    SessionResumed,
+    SessionEnded,
+    ActivityDetected,
+    IdleDetected,
+    MilestoneReached { milestone: String },
 }
 
 pub struct IpcServer {

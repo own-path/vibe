@@ -21,6 +21,24 @@ pub struct ActiveSession {
     pub last_activity: DateTime<Utc>,
     pub paused_at: Option<DateTime<Utc>>,
     pub total_paused: Duration,
+    
+    // Enhanced monitoring fields
+    pub activity_events: Vec<ActivityEvent>,
+    pub activity_score: f64,
+    pub milestone_tracker: MilestoneTracker,
+}
+
+#[derive(Debug, Clone)]
+pub struct ActivityEvent {
+    pub timestamp: DateTime<Utc>,
+    pub event_type: String,
+    pub duration_delta: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct MilestoneTracker {
+    pub last_milestone: Option<String>,
+    pub reached_milestones: Vec<String>,
 }
 
 pub struct DaemonState {
@@ -129,6 +147,18 @@ impl DaemonState {
             last_activity: Utc::now(),
             paused_at: None,
             total_paused: Duration::zero(),
+            
+            // Initialize monitoring fields
+            activity_events: vec![ActivityEvent {
+                timestamp: Utc::now(),
+                event_type: "session_started".to_string(),
+                duration_delta: 0,
+            }],
+            activity_score: 1.0,
+            milestone_tracker: MilestoneTracker {
+                last_milestone: None,
+                reached_milestones: Vec::new(),
+            },
         });
         
         info!("Started session {} for project {}", session_id, project_name);
@@ -178,14 +208,36 @@ impl DaemonState {
     }
 
     pub async fn update_activity(&mut self) -> Result<()> {
-        if let Some(session) = &mut self.active_session {
-            session.last_activity = Utc::now();
+        let should_resume = if let Some(session) = &mut self.active_session {
+            let now = Utc::now();
+            let time_since_last = (now - session.last_activity).num_seconds();
             
-            // Resume if paused
-            if session.paused_at.is_some() {
-                self.resume_session().await?;
-            }
+            session.last_activity = now;
+            
+            // Add activity event
+            session.activity_events.push(ActivityEvent {
+                timestamp: now,
+                event_type: "activity_detected".to_string(),
+                duration_delta: time_since_last,
+            });
+            
+            // Check if we need to resume
+            session.paused_at.is_some()
+        } else {
+            false
+        };
+
+        // Update activity score based on recent activity
+        self.update_activity_score();
+        
+        // Check for milestones
+        self.check_session_milestones().await?;
+        
+        // Resume if needed
+        if should_resume {
+            self.resume_session().await?;
         }
+
         Ok(())
     }
 
@@ -203,6 +255,75 @@ impl DaemonState {
             }
         }
         Ok(())
+    }
+    
+    fn update_activity_score(&mut self) {
+        if let Some(session) = &mut self.active_session {
+            let now = Utc::now();
+            let session_duration = (now - session.start_time).num_seconds();
+            let recent_events = session.activity_events.iter()
+                .filter(|event| (now - event.timestamp).num_seconds() < 300) // Last 5 minutes
+                .count();
+            
+            // Calculate activity score based on recent activity frequency
+            // Score ranges from 0.0 (no activity) to 1.0 (high activity)
+            session.activity_score = (recent_events as f64 / 10.0).min(1.0);
+        }
+    }
+    
+    async fn check_session_milestones(&mut self) -> Result<()> {
+        if let Some(session) = &mut self.active_session {
+            let now = Utc::now();
+            let duration_minutes = (now - session.start_time - session.total_paused).num_minutes();
+            
+            let milestones = [
+                (15, "15-minute focus session"),
+                (30, "Half hour milestone"), 
+                (60, "One hour of focused work"),
+                (90, "90-minute deep work session"),
+                (120, "Two hours of productivity"),
+                (180, "Three hour marathon session"),
+            ];
+            
+            for (minutes, message) in milestones {
+                let milestone_key = format!("{}_minutes", minutes);
+                
+                if duration_minutes >= minutes 
+                    && !session.milestone_tracker.reached_milestones.contains(&milestone_key) {
+                    
+                    session.milestone_tracker.reached_milestones.push(milestone_key.clone());
+                    session.milestone_tracker.last_milestone = Some(message.to_string());
+                    
+                    // Add milestone event
+                    session.activity_events.push(ActivityEvent {
+                        timestamp: now,
+                        event_type: format!("milestone_reached: {}", message),
+                        duration_delta: 0,
+                    });
+                    
+                    info!("Milestone reached: {} (Session {})", message, session.session_id);
+                }
+            }
+        }
+        Ok(())
+    }
+    
+    pub fn get_session_metrics(&self) -> Option<tempo::utils::ipc::SessionMetrics> {
+        self.active_session.as_ref().map(|session| {
+            let now = Utc::now();
+            let total_duration = (now - session.start_time).num_seconds();
+            let active_duration = total_duration - session.total_paused.num_seconds();
+            
+            tempo::utils::ipc::SessionMetrics {
+                session_id: session.session_id,
+                active_duration,
+                total_duration,
+                paused_duration: session.total_paused.num_seconds(),
+                activity_score: session.activity_score,
+                last_activity: session.last_activity,
+                productivity_rating: None, // Could be calculated based on activity patterns
+            }
+        })
     }
 
     async fn find_or_create_project(&mut self, path: &PathBuf) -> Result<Project> {

@@ -1,6 +1,7 @@
 pub mod connection;
 pub mod migrations;
 pub mod queries;
+pub mod advanced_queries;
 
 use anyhow::Result;
 use std::path::Path;

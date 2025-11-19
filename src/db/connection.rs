@@ -32,7 +32,12 @@ impl Database {
         // Set cache size (negative value means KB)
         connection.pragma_update(None, "cache_size", "-64000")?;
 
-        Ok(Self { connection })
+        let db = Self { connection };
+        
+        // Run migrations automatically
+        crate::db::migrations::run_migrations(&db.connection)?;
+
+        Ok(db)
     }
 
     pub fn in_memory() -> Result<Self> {

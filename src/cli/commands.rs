@@ -1,8 +1,9 @@
-use super::{Cli, Commands, ProjectAction, SessionAction, TagAction, ConfigAction};
+use super::{Cli, Commands, ProjectAction, SessionAction, TagAction, ConfigAction, GoalAction, EstimateAction, BranchAction, TemplateAction, WorkspaceAction, CalendarAction, IssueAction, ClientAction};
 use crate::utils::ipc::{IpcClient, IpcMessage, IpcResponse, get_socket_path, is_daemon_running};
-use crate::db::queries::{ProjectQueries, SessionQueries, TagQueries};
+use crate::db::queries::{ProjectQueries, SessionQueries, TagQueries, SessionEditQueries};
+use crate::db::advanced_queries::{GoalQueries, GitBranchQueries, TimeEstimateQueries, InsightQueries, TemplateQueries, WorkspaceQueries};
 use crate::db::{Database, get_database_path};
-use crate::models::{Project, Tag};
+use crate::models::{Project, Tag, Goal, TimeEstimate, ProjectTemplate, Workspace};
 use crate::utils::paths::{canonicalize_path, detect_project_name, get_git_hash, is_git_repository};
 use crate::utils::config::{load_config, save_config};
 use crate::cli::reports::ReportGenerator;
@@ -10,9 +11,15 @@ use anyhow::Result;
 use std::env;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use chrono::Utc;
+use chrono::{Utc, TimeZone};
 
-// Note: UI imports will be added when needed
+use crate::ui::dashboard::Dashboard;
+use crate::ui::timer::InteractiveTimer;
+use crate::ui::history::SessionHistoryBrowser;
+use crossterm::{execute, terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen}};
+use ratatui::{backend::CrosstermBackend, Terminal};
+use std::io;
+use tokio::runtime::Handle;
 
 pub async fn handle_command(cli: Cli) -> Result<()> {
     match cli.command {
@@ -61,13 +68,63 @@ pub async fn handle_command(cli: Cli) -> Result<()> {
         }
         
         Commands::Dashboard => {
-            println!("TUI Dashboard - Coming soon! Use 'tempo status' for basic info.");
-            Ok(())
+            launch_dashboard().await
         }
         
         Commands::Tui => {
-            println!("Interactive TUI - Coming soon! Use 'tempo session current' and 'tempo report' for basic info.");
-            Ok(())
+            launch_dashboard().await
+        }
+        
+        Commands::Timer => {
+            launch_timer().await
+        }
+
+        Commands::History => {
+            launch_history().await
+        }
+
+        Commands::Goal { action } => {
+            handle_goal_action(action).await
+        }
+
+        Commands::Insights { period, project } => {
+            show_insights(period, project).await
+        }
+
+        Commands::Summary { period, from } => {
+            show_summary(period, from).await
+        }
+
+        Commands::Compare { projects, from, to } => {
+            compare_projects(projects, from, to).await
+        }
+
+        Commands::Estimate { action } => {
+            handle_estimate_action(action).await
+        }
+
+        Commands::Branch { action } => {
+            handle_branch_action(action).await
+        }
+
+        Commands::Template { action } => {
+            handle_template_action(action).await
+        }
+
+        Commands::Workspace { action } => {
+            handle_workspace_action(action).await
+        }
+
+        Commands::Calendar { action } => {
+            handle_calendar_action(action).await
+        }
+
+        Commands::Issue { action } => {
+            handle_issue_action(action).await
+        }
+
+        Commands::Client { action } => {
+            handle_client_action(action).await
         }
 
         Commands::Completions { shell } => {
@@ -80,33 +137,23 @@ pub async fn handle_command(cli: Cli) -> Result<()> {
 async fn handle_project_action(action: ProjectAction) -> Result<()> {
     match action {
         ProjectAction::Archive { project } => {
-            println!("Archiving project: {}", project);
-            // TODO: Implement project archiving
-            Ok(())
+            archive_project(project).await
         }
         
         ProjectAction::Unarchive { project } => {
-            println!("Unarchiving project: {}", project);
-            // TODO: Implement project unarchiving
-            Ok(())
+            unarchive_project(project).await
         }
         
         ProjectAction::UpdatePath { project, path } => {
-            println!("Updating path for project {} to {:?}", project, path);
-            // TODO: Implement project path update
-            Ok(())
+            update_project_path(project, path).await
         }
         
         ProjectAction::AddTag { project, tag } => {
-            println!("Adding tag '{}' to project '{}'", tag, project);
-            // TODO: Implement adding tag to project
-            Ok(())
+            add_tag_to_project(project, tag).await
         }
         
         ProjectAction::RemoveTag { project, tag } => {
-            println!("Removing tag '{}' from project '{}'", tag, project);
-            // TODO: Implement removing tag from project
-            Ok(())
+            remove_tag_from_project(project, tag).await
         }
     }
 }
@@ -143,6 +190,14 @@ async fn handle_session_action(action: SessionAction) -> Result<()> {
         
         SessionAction::Delete { id, force } => {
             delete_session(id, force).await
+        }
+        
+        SessionAction::Merge { session_ids, project, notes } => {
+            merge_sessions(session_ids, project, notes).await
+        }
+        
+        SessionAction::Split { session_id, split_times, notes } => {
+            split_session(session_id, split_times, notes).await
         }
     }
 }
@@ -345,7 +400,7 @@ async fn start_session(project: Option<String>, context: Option<String>) -> Resu
         Ok(IpcResponse::Ok) => {
             println!("Session started for project at {:?}", project_path);
         }
-        Ok(IpcResponse::Error { message }) => {
+        Ok(IpcResponse::Error(message)) => {
             println!("Failed to start session: {}", message);
         }
         Ok(other) => {
@@ -372,7 +427,7 @@ async fn stop_session() -> Result<()> {
         Ok(IpcResponse::Ok) => {
             println!("Session stopped");
         }
-        Ok(IpcResponse::Error { message }) => {
+        Ok(IpcResponse::Error(message)) => {
             println!("Failed to stop session: {}", message);
         }
         Ok(other) => {
@@ -399,7 +454,7 @@ async fn pause_session() -> Result<()> {
         Ok(IpcResponse::Ok) => {
             println!("Session paused");
         }
-        Ok(IpcResponse::Error { message }) => {
+        Ok(IpcResponse::Error(message)) => {
             println!("Failed to pause session: {}", message);
         }
         Ok(other) => {
@@ -426,7 +481,7 @@ async fn resume_session() -> Result<()> {
         Ok(IpcResponse::Ok) => {
             println!("Session resumed");
         }
-        Ok(IpcResponse::Error { message }) => {
+        Ok(IpcResponse::Error(message)) => {
             println!("Failed to resume session: {}", message);
         }
         Ok(other) => {
@@ -453,7 +508,7 @@ async fn current_session() -> Result<()> {
         Ok(IpcResponse::SessionInfo(session)) => {
             print_formatted_session(&session)?;
         }
-        Ok(IpcResponse::Error { message }) => {
+        Ok(IpcResponse::Error(message)) => {
             print_no_active_session(&message);
         }
         Ok(other) => {
@@ -482,12 +537,12 @@ async fn generate_report(
     
     match format.as_deref() {
         Some("csv") => {
-            let output_path = PathBuf::from("vibe-report.csv");
+            let output_path = PathBuf::from("tempo-report.csv");
             generator.export_csv(&report, &output_path)?;
             println!("Report exported to: {:?}", output_path);
         }
         Some("json") => {
-            let output_path = PathBuf::from("vibe-report.json");
+            let output_path = PathBuf::from("tempo-report.json");
             generator.export_json(&report, &output_path)?;
             println!("Report exported to: {:?}", output_path);
         }
@@ -882,8 +937,32 @@ async fn list_tags() -> Result<()> {
 }
 
 async fn delete_tag(name: String) -> Result<()> {
-    println!("\x1b[33m⚠  Tag deletion not yet implemented:\x1b[0m {}", name);
-    println!("This requires implementing delete functionality in TagQueries.");
+    // Initialize database
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    // Check if tag exists
+    if TagQueries::find_by_name(&db.connection, &name)?.is_none() {
+        println!("\x1b[31m✗ Tag '{}' not found\x1b[0m", name);
+        return Ok(());
+    }
+    
+    // Delete the tag
+    let deleted = TagQueries::delete_by_name(&db.connection, &name)?;
+    
+    if deleted {
+        println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+        println!("\x1b[36m│\x1b[0m           \x1b[1;37mTag Deleted\x1b[0m                   \x1b[36m│\x1b[0m");
+        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+        println!("\x1b[36m│\x1b[0m Name:     \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&name, 27));
+        println!("\x1b[36m│\x1b[0m Status:   \x1b[32mDeleted\x1b[0m                   \x1b[36m│\x1b[0m");
+        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+        println!("\x1b[36m│\x1b[0m \x1b[32m✓ Tag deleted successfully\x1b[0m             \x1b[36m│\x1b[0m");
+        println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    } else {
+        println!("\x1b[31m✗ Failed to delete tag '{}'\x1b[0m", name);
+    }
+    
     Ok(())
 }
 
@@ -1018,7 +1097,21 @@ async fn list_sessions(limit: Option<usize>, project_filter: Option<String>) -> 
     let db = Database::new(&db_path)?;
     
     let session_limit = limit.unwrap_or(10);
-    let sessions = SessionQueries::list_recent(&db.connection, session_limit)?;
+    
+    // Handle project filtering
+    let project_id = if let Some(project_name) = &project_filter {
+        match ProjectQueries::find_by_name(&db.connection, project_name)? {
+            Some(project) => Some(project.id.unwrap()),
+            None => {
+                println!("\x1b[31m✗ Project '{}' not found\x1b[0m", project_name);
+                return Ok(());
+            }
+        }
+    } else {
+        None
+    };
+    
+    let sessions = SessionQueries::list_with_filter(&db.connection, project_id, None, None, Some(session_limit))?;
     
     if sessions.is_empty() {
         println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
@@ -1085,30 +1178,1134 @@ async fn list_sessions(limit: Option<usize>, project_filter: Option<String>) -> 
 }
 
 async fn edit_session(id: i64, start: Option<String>, end: Option<String>, project: Option<String>, reason: Option<String>) -> Result<()> {
-    println!("\x1b[33m⚠  Session editing not yet implemented:\x1b[0m session {}", id);
-    println!("This requires implementing update functionality in SessionQueries.");
-    if let Some(s) = start {
-        println!("  New start: {}", s);
+    // Initialize database
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    // Find the session
+    let session = SessionQueries::find_by_id(&db.connection, id)?;
+    let session = match session {
+        Some(s) => s,
+        None => {
+            println!("\x1b[31m✗ Session {} not found\x1b[0m", id);
+            return Ok(());
+        }
+    };
+    
+    let original_start = session.start_time;
+    let original_end = session.end_time;
+    
+    // Parse new values
+    let mut new_start = original_start;
+    let mut new_end = original_end;
+    let mut new_project_id = session.project_id;
+    
+    // Parse start time if provided
+    if let Some(start_str) = &start {
+        new_start = match chrono::DateTime::parse_from_rfc3339(start_str) {
+            Ok(dt) => dt.with_timezone(&chrono::Utc),
+            Err(_) => {
+                match chrono::NaiveDateTime::parse_from_str(start_str, "%Y-%m-%d %H:%M:%S") {
+                    Ok(dt) => chrono::Utc.from_utc_datetime(&dt),
+                    Err(_) => return Err(anyhow::anyhow!("Invalid start time format. Use RFC3339 or 'YYYY-MM-DD HH:MM:SS'"))
+                }
+            }
+        };
     }
-    if let Some(e) = end {
-        println!("  New end: {}", e);
+    
+    // Parse end time if provided
+    if let Some(end_str) = &end {
+        if end_str.to_lowercase() == "null" || end_str.to_lowercase() == "none" {
+            new_end = None;
+        } else {
+            new_end = Some(match chrono::DateTime::parse_from_rfc3339(end_str) {
+                Ok(dt) => dt.with_timezone(&chrono::Utc),
+                Err(_) => {
+                    match chrono::NaiveDateTime::parse_from_str(end_str, "%Y-%m-%d %H:%M:%S") {
+                        Ok(dt) => chrono::Utc.from_utc_datetime(&dt),
+                        Err(_) => return Err(anyhow::anyhow!("Invalid end time format. Use RFC3339 or 'YYYY-MM-DD HH:MM:SS'"))
+                    }
+                }
+            });
+        }
     }
-    if let Some(p) = project {
-        println!("  New project: {}", p);
+    
+    // Find project by name if provided
+    if let Some(project_name) = &project {
+        if let Some(proj) = ProjectQueries::find_by_name(&db.connection, project_name)? {
+            new_project_id = proj.id.unwrap();
+        } else {
+            println!("\x1b[31m✗ Project '{}' not found\x1b[0m", project_name);
+            return Ok(());
+        }
     }
-    if let Some(r) = reason {
-        println!("  Reason: {}", r);
+    
+    // Validate the edit
+    if new_start >= new_end.unwrap_or(chrono::Utc::now()) {
+        println!("\x1b[31m✗ Start time must be before end time\x1b[0m");
+        return Ok(());
     }
+    
+    // Create audit trail record
+    SessionEditQueries::create_edit_record(
+        &db.connection,
+        id,
+        original_start,
+        original_end,
+        new_start,
+        new_end,
+        reason.clone()
+    )?;
+    
+    // Update the session
+    SessionQueries::update_session(
+        &db.connection,
+        id,
+        if start.is_some() { Some(new_start) } else { None },
+        if end.is_some() { Some(new_end) } else { None },
+        if project.is_some() { Some(new_project_id) } else { None },
+        None
+    )?;
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m         \x1b[1;37mSession Updated\x1b[0m                 \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m Session:  \x1b[1;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m", id);
+    
+    if start.is_some() {
+        println!("\x1b[36m│\x1b[0m Start:    \x1b[32m{:<27}\x1b[0m \x1b[36m│\x1b[0m", 
+            truncate_string(&new_start.format("%Y-%m-%d %H:%M:%S").to_string(), 27)
+        );
+    }
+    
+    if end.is_some() {
+        let end_str = if let Some(e) = new_end {
+            e.format("%Y-%m-%d %H:%M:%S").to_string()
+        } else {
+            "Ongoing".to_string()
+        };
+        println!("\x1b[36m│\x1b[0m End:      \x1b[32m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&end_str, 27));
+    }
+    
+    if let Some(r) = &reason {
+        println!("\x1b[36m│\x1b[0m Reason:   \x1b[2;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(r, 27));
+    }
+    
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m \x1b[32m✓ Session updated with audit trail\x1b[0m     \x1b[36m│\x1b[0m");
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    
     Ok(())
 }
 
 async fn delete_session(id: i64, force: bool) -> Result<()> {
-    println!("\x1b[33m⚠  Session deletion not yet implemented:\x1b[0m session {}", id);
-    println!("This requires implementing delete functionality in SessionQueries.");
-    if force {
-        println!("  Force deletion was requested");
+    // Initialize database
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    // Check if session exists
+    let session = SessionQueries::find_by_id(&db.connection, id)?;
+    let session = match session {
+        Some(s) => s,
+        None => {
+            println!("\x1b[31m✗ Session {} not found\x1b[0m", id);
+            return Ok(());
+        }
+    };
+    
+    // Check if it's an active session and require force flag
+    if session.end_time.is_none() && !force {
+        println!("\x1b[33m⚠  Cannot delete active session without --force flag\x1b[0m");
+        println!("  Use: tempo session delete {} --force", id);
+        return Ok(());
     }
+    
+    // Delete the session
+    SessionQueries::delete_session(&db.connection, id)?;
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m         \x1b[1;37mSession Deleted\x1b[0m                 \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m Session:  \x1b[1;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m", id);
+    println!("\x1b[36m│\x1b[0m Status:   \x1b[32mDeleted\x1b[0m                   \x1b[36m│\x1b[0m");
+    
+    if session.end_time.is_none() {
+        println!("\x1b[36m│\x1b[0m Type:     \x1b[33mActive session (forced)\x1b[0m      \x1b[36m│\x1b[0m");
+    } else {
+        println!("\x1b[36m│\x1b[0m Type:     \x1b[37mCompleted session\x1b[0m           \x1b[36m│\x1b[0m");
+    }
+    
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m \x1b[32m✓ Session and audit trail removed\x1b[0m      \x1b[36m│\x1b[0m");
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    
     Ok(())
 }
 
-// TUI functions will be implemented later when the library integration is fully working
+// Project management functions
+async fn archive_project(project_name: String) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    let project = match ProjectQueries::find_by_name(&db.connection, &project_name)? {
+        Some(p) => p,
+        None => {
+            println!("\x1b[31m✗ Project '{}' not found\x1b[0m", project_name);
+            return Ok(());
+        }
+    };
+    
+    if project.is_archived {
+        println!("\x1b[33m⚠  Project '{}' is already archived\x1b[0m", project_name);
+        return Ok(());
+    }
+    
+    let success = ProjectQueries::archive_project(&db.connection, project.id.unwrap())?;
+    
+    if success {
+        println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+        println!("\x1b[36m│\x1b[0m        \x1b[1;37mProject Archived\x1b[0m                \x1b[36m│\x1b[0m");
+        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+        println!("\x1b[36m│\x1b[0m Name:     \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&project_name, 27));
+        println!("\x1b[36m│\x1b[0m Status:   \x1b[90mArchived\x1b[0m                  \x1b[36m│\x1b[0m");
+        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+        println!("\x1b[36m│\x1b[0m \x1b[32m✓ Project archived successfully\x1b[0m        \x1b[36m│\x1b[0m");
+        println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    } else {
+        println!("\x1b[31m✗ Failed to archive project '{}'\x1b[0m", project_name);
+    }
+    
+    Ok(())
+}
+
+async fn unarchive_project(project_name: String) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    let project = match ProjectQueries::find_by_name(&db.connection, &project_name)? {
+        Some(p) => p,
+        None => {
+            println!("\x1b[31m✗ Project '{}' not found\x1b[0m", project_name);
+            return Ok(());
+        }
+    };
+    
+    if !project.is_archived {
+        println!("\x1b[33m⚠  Project '{}' is not archived\x1b[0m", project_name);
+        return Ok(());
+    }
+    
+    let success = ProjectQueries::unarchive_project(&db.connection, project.id.unwrap())?;
+    
+    if success {
+        println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+        println!("\x1b[36m│\x1b[0m       \x1b[1;37mProject Unarchived\x1b[0m               \x1b[36m│\x1b[0m");
+        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+        println!("\x1b[36m│\x1b[0m Name:     \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&project_name, 27));
+        println!("\x1b[36m│\x1b[0m Status:   \x1b[32mActive\x1b[0m                    \x1b[36m│\x1b[0m");
+        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+        println!("\x1b[36m│\x1b[0m \x1b[32m✓ Project unarchived successfully\x1b[0m      \x1b[36m│\x1b[0m");
+        println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    } else {
+        println!("\x1b[31m✗ Failed to unarchive project '{}'\x1b[0m", project_name);
+    }
+    
+    Ok(())
+}
+
+async fn update_project_path(project_name: String, new_path: PathBuf) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    let project = match ProjectQueries::find_by_name(&db.connection, &project_name)? {
+        Some(p) => p,
+        None => {
+            println!("\x1b[31m✗ Project '{}' not found\x1b[0m", project_name);
+            return Ok(());
+        }
+    };
+    
+    let canonical_path = canonicalize_path(&new_path)?;
+    let success = ProjectQueries::update_project_path(&db.connection, project.id.unwrap(), &canonical_path)?;
+    
+    if success {
+        println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+        println!("\x1b[36m│\x1b[0m       \x1b[1;37mProject Path Updated\x1b[0m              \x1b[36m│\x1b[0m");
+        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+        println!("\x1b[36m│\x1b[0m Name:     \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&project_name, 27));
+        println!("\x1b[36m│\x1b[0m Old Path: \x1b[2;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&project.path.to_string_lossy(), 27));
+        println!("\x1b[36m│\x1b[0m New Path: \x1b[32m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&canonical_path.to_string_lossy(), 27));
+        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+        println!("\x1b[36m│\x1b[0m \x1b[32m✓ Path updated successfully\x1b[0m            \x1b[36m│\x1b[0m");
+        println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    } else {
+        println!("\x1b[31m✗ Failed to update path for project '{}'\x1b[0m", project_name);
+    }
+    
+    Ok(())
+}
+
+async fn add_tag_to_project(project_name: String, tag_name: String) -> Result<()> {
+    println!("\x1b[33m⚠  Project-tag associations not yet implemented\x1b[0m");
+    println!("Would add tag '{}' to project '{}'", tag_name, project_name);
+    println!("This requires implementing project_tags table operations.");
+    Ok(())
+}
+
+async fn remove_tag_from_project(project_name: String, tag_name: String) -> Result<()> {
+    println!("\x1b[33m⚠  Project-tag associations not yet implemented\x1b[0m");
+    println!("Would remove tag '{}' from project '{}'", tag_name, project_name);
+    println!("This requires implementing project_tags table operations.");
+    Ok(())
+}
+
+// Bulk session operations
+async fn bulk_update_sessions_project(session_ids: Vec<i64>, new_project_name: String) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    // Find the target project
+    let project = match ProjectQueries::find_by_name(&db.connection, &new_project_name)? {
+        Some(p) => p,
+        None => {
+            println!("\x1b[31m✗ Project '{}' not found\x1b[0m", new_project_name);
+            return Ok(());
+        }
+    };
+    
+    let updated = SessionQueries::bulk_update_project(&db.connection, &session_ids, project.id.unwrap())?;
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m      \x1b[1;37mBulk Session Update\x1b[0m               \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m Sessions: \x1b[1;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m", updated);
+    println!("\x1b[36m│\x1b[0m Project:  \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&new_project_name, 27));
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m \x1b[32m✓ {} sessions updated\x1b[0m {:<12} \x1b[36m│\x1b[0m", updated, "");
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    
+    Ok(())
+}
+
+async fn bulk_delete_sessions(session_ids: Vec<i64>) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    let deleted = SessionQueries::bulk_delete(&db.connection, &session_ids)?;
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m      \x1b[1;37mBulk Session Delete\x1b[0m               \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m Requested: \x1b[1;37m{:<25}\x1b[0m \x1b[36m│\x1b[0m", session_ids.len());
+    println!("\x1b[36m│\x1b[0m Deleted:   \x1b[32m{:<25}\x1b[0m \x1b[36m│\x1b[0m", deleted);
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m \x1b[32m✓ {} sessions deleted\x1b[0m {:<10} \x1b[36m│\x1b[0m", deleted, "");
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    
+    Ok(())
+}
+
+async fn launch_dashboard() -> Result<()> {
+    // Setup terminal
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    // Create dashboard instance and run it
+    let result = async {
+        let mut dashboard = Dashboard::new().await?;
+        dashboard.run(&mut terminal).await
+    };
+    
+    let result = tokio::task::block_in_place(|| {
+        Handle::current().block_on(result)
+    });
+
+    // Restore terminal
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
+
+    result
+}
+
+async fn launch_timer() -> Result<()> {
+    // Setup terminal
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    // Create timer instance and run it
+    let result = async {
+        let mut timer = InteractiveTimer::new().await?;
+        timer.run(&mut terminal).await
+    };
+    
+    let result = tokio::task::block_in_place(|| {
+        Handle::current().block_on(result)
+    });
+
+    // Restore terminal
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
+
+    result
+}
+
+async fn merge_sessions(session_ids_str: String, project_name: Option<String>, notes: Option<String>) -> Result<()> {
+    // Parse session IDs
+    let session_ids: Result<Vec<i64>, _> = session_ids_str
+        .split(',')
+        .map(|s| s.trim().parse::<i64>())
+        .collect();
+    
+    let session_ids = session_ids.map_err(|_| anyhow::anyhow!("Invalid session IDs format. Use comma-separated numbers like '1,2,3'"))?;
+    
+    if session_ids.len() < 2 {
+        return Err(anyhow::anyhow!("At least 2 sessions are required for merging"));
+    }
+    
+    // Get target project ID if specified
+    let mut target_project_id = None;
+    if let Some(project) = project_name {
+        let db_path = get_database_path()?;
+        let db = Database::new(&db_path)?;
+        
+        // Try to find project by name first, then by ID
+        if let Ok(project_id) = project.parse::<i64>() {
+            if ProjectQueries::find_by_id(&db.connection, project_id)?.is_some() {
+                target_project_id = Some(project_id);
+            }
+        } else if let Some(proj) = ProjectQueries::find_by_name(&db.connection, &project)? {
+            target_project_id = proj.id;
+        }
+        
+        if target_project_id.is_none() {
+            return Err(anyhow::anyhow!("Project '{}' not found", project));
+        }
+    }
+    
+    // Perform the merge
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    let merged_id = SessionQueries::merge_sessions(&db.connection, &session_ids, target_project_id, notes)?;
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m        \x1b[1;37mSession Merge Complete\x1b[0m            \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m Merged sessions: \x1b[33m{:<22}\x1b[0m \x1b[36m│\x1b[0m", session_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", "));
+    println!("\x1b[36m│\x1b[0m New session ID:  \x1b[32m{:<22}\x1b[0m \x1b[36m│\x1b[0m", merged_id);
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m \x1b[32m✓ Sessions successfully merged\x1b[0m        \x1b[36m│\x1b[0m");
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    
+    Ok(())
+}
+
+async fn split_session(session_id: i64, split_times_str: String, notes: Option<String>) -> Result<()> {
+    // Parse split times
+    let split_time_strings: Vec<&str> = split_times_str.split(',').map(|s| s.trim()).collect();
+    let mut split_times = Vec::new();
+    
+    for time_str in split_time_strings {
+        // Try to parse as time (HH:MM or HH:MM:SS)
+        let datetime = if time_str.contains(':') {
+            // Parse as time and combine with today's date
+            let today = chrono::Local::now().date_naive();
+            let time = chrono::NaiveTime::parse_from_str(time_str, "%H:%M")
+                .or_else(|_| chrono::NaiveTime::parse_from_str(time_str, "%H:%M:%S"))
+                .map_err(|_| anyhow::anyhow!("Invalid time format '{}'. Use HH:MM or HH:MM:SS", time_str))?;
+            today.and_time(time).and_utc()
+        } else {
+            // Try to parse as full datetime
+            chrono::DateTime::parse_from_rfc3339(time_str)
+                .map_err(|_| anyhow::anyhow!("Invalid datetime format '{}'. Use HH:MM or RFC3339 format", time_str))?
+                .to_utc()
+        };
+        
+        split_times.push(datetime);
+    }
+    
+    if split_times.is_empty() {
+        return Err(anyhow::anyhow!("No valid split times provided"));
+    }
+    
+    // Parse notes if provided
+    let notes_list = notes.map(|n| {
+        n.split(',').map(|s| s.trim().to_string()).collect::<Vec<String>>()
+    });
+    
+    // Perform the split
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    let new_session_ids = SessionQueries::split_session(&db.connection, session_id, &split_times, notes_list)?;
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m        \x1b[1;37mSession Split Complete\x1b[0m            \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m Original session: \x1b[33m{:<20}\x1b[0m \x1b[36m│\x1b[0m", session_id);
+    println!("\x1b[36m│\x1b[0m Split points:     \x1b[90m{:<20}\x1b[0m \x1b[36m│\x1b[0m", split_times.len());
+    println!("\x1b[36m│\x1b[0m New sessions:     \x1b[32m{:<20}\x1b[0m \x1b[36m│\x1b[0m", new_session_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", "));
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m \x1b[32m✓ Session successfully split\x1b[0m          \x1b[36m│\x1b[0m");
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    
+    Ok(())
+}
+
+async fn launch_history() -> Result<()> {
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    let result = async {
+        let mut browser = SessionHistoryBrowser::new().await?;
+        browser.run(&mut terminal).await
+    };
+    
+    let result = tokio::task::block_in_place(|| {
+        Handle::current().block_on(result)
+    });
+
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
+
+    result
+}
+
+async fn handle_goal_action(action: GoalAction) -> Result<()> {
+    match action {
+        GoalAction::Create { name, target_hours, project, description, start_date, end_date } => {
+            create_goal(name, target_hours, project, description, start_date, end_date).await
+        }
+        GoalAction::List { project } => {
+            list_goals(project).await
+        }
+        GoalAction::Update { id, hours } => {
+            update_goal_progress(id, hours).await
+        }
+    }
+}
+
+async fn create_goal(name: String, target_hours: f64, project: Option<String>, description: Option<String>, start_date: Option<String>, end_date: Option<String>) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    let project_id = if let Some(proj_name) = project {
+        match ProjectQueries::find_by_name(&db.connection, &proj_name)? {
+            Some(p) => p.id,
+            None => {
+                println!("\x1b[31m✗ Project '{}' not found\x1b[0m", proj_name);
+                return Ok(());
+            }
+        }
+    } else {
+        None
+    };
+    
+    let start = start_date.and_then(|d| chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok());
+    let end = end_date.and_then(|d| chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok());
+    
+    let mut goal = Goal::new(name.clone(), target_hours);
+    if let Some(pid) = project_id {
+        goal = goal.with_project(pid);
+    }
+    if let Some(desc) = description {
+        goal = goal.with_description(desc);
+    }
+    goal = goal.with_dates(start, end);
+    
+    goal.validate()?;
+    let goal_id = GoalQueries::create(&db.connection, &goal)?;
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m           \x1b[1;37mGoal Created\x1b[0m                   \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m Name:     \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&name, 27));
+    println!("\x1b[36m│\x1b[0m Target:   \x1b[32m{:<27}\x1b[0m \x1b[36m│\x1b[0m", format!("{} hours", target_hours));
+    println!("\x1b[36m│\x1b[0m ID:       \x1b[90m{:<27}\x1b[0m \x1b[36m│\x1b[0m", goal_id);
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m \x1b[32m✓ Goal created successfully\x1b[0m             \x1b[36m│\x1b[0m");
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    
+    Ok(())
+}
+
+async fn list_goals(project: Option<String>) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    let project_id = if let Some(proj_name) = &project {
+        match ProjectQueries::find_by_name(&db.connection, proj_name)? {
+            Some(p) => p.id,
+            None => {
+                println!("\x1b[31m✗ Project '{}' not found\x1b[0m", proj_name);
+                return Ok(());
+            }
+        }
+    } else {
+        None
+    };
+    
+    let goals = GoalQueries::list_by_project(&db.connection, project_id)?;
+    
+    if goals.is_empty() {
+        println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+        println!("\x1b[36m│\x1b[0m              \x1b[1;37mNo Goals\x1b[0m                    \x1b[36m│\x1b[0m");
+        println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+        return Ok(());
+    }
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m                \x1b[1;37mGoals\x1b[0m                      \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    
+    for goal in &goals {
+        let progress_pct = goal.progress_percentage();
+        println!("\x1b[36m│\x1b[0m 🎯 \x1b[1;33m{:<25}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&goal.name, 25));
+        println!("\x1b[36m│\x1b[0m    Progress: \x1b[32m{:.1}%\x1b[0m ({:.1}h / {:.1}h)     \x1b[36m│\x1b[0m", 
+            progress_pct, goal.current_progress, goal.target_hours);
+        println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
+    }
+    
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    Ok(())
+}
+
+async fn update_goal_progress(id: i64, hours: f64) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    GoalQueries::update_progress(&db.connection, id, hours)?;
+    println!("\x1b[32m✓ Updated goal {} progress by {} hours\x1b[0m", id, hours);
+    Ok(())
+}
+
+async fn show_insights(period: Option<String>, project: Option<String>) -> Result<()> {
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m        \x1b[1;37mProductivity Insights\x1b[0m              \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m Period:   \x1b[33m{:<27}\x1b[0m \x1b[36m│\x1b[0m", period.as_deref().unwrap_or("all"));
+    if let Some(proj) = project {
+        println!("\x1b[36m│\x1b[0m Project:  \x1b[33m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&proj, 27));
+    }
+    println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
+    println!("\x1b[36m│\x1b[0m \x1b[33m⚠  Insights calculation in progress...\x1b[0m  \x1b[36m│\x1b[0m");
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    Ok(())
+}
+
+async fn show_summary(period: String, from: Option<String>) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    let start_date = if let Some(from_str) = from {
+        chrono::NaiveDate::parse_from_str(&from_str, "%Y-%m-%d")?
+    } else {
+        match period.as_str() {
+            "week" => chrono::Local::now().date_naive() - chrono::Duration::days(7),
+            "month" => chrono::Local::now().date_naive() - chrono::Duration::days(30),
+            _ => chrono::Local::now().date_naive(),
+        }
+    };
+    
+    let insight_data = match period.as_str() {
+        "week" => InsightQueries::calculate_weekly_summary(&db.connection, start_date)?,
+        "month" => InsightQueries::calculate_monthly_summary(&db.connection, start_date)?,
+        _ => return Err(anyhow::anyhow!("Invalid period. Use 'week' or 'month'")),
+    };
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m         \x1b[1;37m{} Summary\x1b[0m                  \x1b[36m│\x1b[0m", period);
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m Total Hours:  \x1b[32m{:<23}\x1b[0m \x1b[36m│\x1b[0m", format!("{:.1}h", insight_data.total_hours));
+    println!("\x1b[36m│\x1b[0m Sessions:     \x1b[33m{:<23}\x1b[0m \x1b[36m│\x1b[0m", insight_data.sessions_count);
+    println!("\x1b[36m│\x1b[0m Avg Session:  \x1b[33m{:<23}\x1b[0m \x1b[36m│\x1b[0m", format!("{:.1}h", insight_data.avg_session_duration));
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    Ok(())
+}
+
+async fn compare_projects(projects: String, _from: Option<String>, _to: Option<String>) -> Result<()> {
+    let _project_names: Vec<&str> = projects.split(',').map(|s| s.trim()).collect();
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m        \x1b[1;37mProject Comparison\x1b[0m                \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m Projects: \x1b[33m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&projects, 27));
+    println!("\x1b[36m│\x1b[0m \x1b[33m⚠  Comparison feature in development\x1b[0m    \x1b[36m│\x1b[0m");
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    Ok(())
+}
+
+async fn handle_estimate_action(action: EstimateAction) -> Result<()> {
+    match action {
+        EstimateAction::Create { project, task, hours, due_date } => {
+            create_estimate(project, task, hours, due_date).await
+        }
+        EstimateAction::Record { id, hours } => {
+            record_actual_time(id, hours).await
+        }
+        EstimateAction::List { project } => {
+            list_estimates(project).await
+        }
+    }
+}
+
+async fn create_estimate(project: String, task: String, hours: f64, due_date: Option<String>) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    let project_obj = ProjectQueries::find_by_name(&db.connection, &project)?
+        .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", project))?;
+    
+    let due = due_date.and_then(|d| chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok());
+    
+    let mut estimate = TimeEstimate::new(project_obj.id.unwrap(), task.clone(), hours);
+    estimate.due_date = due;
+    
+    let estimate_id = TimeEstimateQueries::create(&db.connection, &estimate)?;
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m      \x1b[1;37mTime Estimate Created\x1b[0m              \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m Task:      \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&task, 27));
+    println!("\x1b[36m│\x1b[0m Estimate:  \x1b[32m{:<27}\x1b[0m \x1b[36m│\x1b[0m", format!("{} hours", hours));
+    println!("\x1b[36m│\x1b[0m ID:        \x1b[90m{:<27}\x1b[0m \x1b[36m│\x1b[0m", estimate_id);
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    Ok(())
+}
+
+async fn record_actual_time(id: i64, hours: f64) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    TimeEstimateQueries::record_actual(&db.connection, id, hours)?;
+    println!("\x1b[32m✓ Recorded {} hours for estimate {}\x1b[0m", hours, id);
+    Ok(())
+}
+
+async fn list_estimates(project: String) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    let project_obj = ProjectQueries::find_by_name(&db.connection, &project)?
+        .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", project))?;
+    
+    let estimates = TimeEstimateQueries::list_by_project(&db.connection, project_obj.id.unwrap())?;
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m          \x1b[1;37mTime Estimates\x1b[0m                  \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    
+    for est in &estimates {
+        let variance = est.variance();
+        let variance_str = if let Some(v) = variance {
+            if v > 0.0 {
+                format!("\x1b[31m+{:.1}h over\x1b[0m", v)
+            } else {
+                format!("\x1b[32m{:.1}h under\x1b[0m", v.abs())
+            }
+        } else {
+            "N/A".to_string()
+        };
+        
+        println!("\x1b[36m│\x1b[0m 📋 \x1b[1;33m{:<25}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&est.task_name, 25));
+        let actual_str = est.actual_hours.map(|h| format!("{:.1}h", h)).unwrap_or_else(|| "N/A".to_string());
+        println!("\x1b[36m│\x1b[0m    Est: {}h | Actual: {} | {}  \x1b[36m│\x1b[0m", 
+            est.estimated_hours,
+            actual_str,
+            variance_str
+        );
+        println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
+    }
+    
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    Ok(())
+}
+
+async fn handle_branch_action(action: BranchAction) -> Result<()> {
+    match action {
+        BranchAction::List { project } => {
+            list_branches(project).await
+        }
+        BranchAction::Stats { project, branch } => {
+            show_branch_stats(project, branch).await
+        }
+    }
+}
+
+async fn list_branches(project: String) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    let project_obj = ProjectQueries::find_by_name(&db.connection, &project)?
+        .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", project))?;
+    
+    let branches = GitBranchQueries::list_by_project(&db.connection, project_obj.id.unwrap())?;
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m          \x1b[1;37mGit Branches\x1b[0m                   \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    
+    for branch in &branches {
+        println!("\x1b[36m│\x1b[0m 🌿 \x1b[1;33m{:<25}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&branch.branch_name, 25));
+        println!("\x1b[36m│\x1b[0m    Time: \x1b[32m{:<27}\x1b[0m \x1b[36m│\x1b[0m", format!("{:.1}h", branch.total_hours()));
+        println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
+    }
+    
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    Ok(())
+}
+
+async fn show_branch_stats(project: String, branch: Option<String>) -> Result<()> {
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m        \x1b[1;37mBranch Statistics\x1b[0m                \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m Project:  \x1b[33m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&project, 27));
+    if let Some(b) = branch {
+        println!("\x1b[36m│\x1b[0m Branch:   \x1b[33m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&b, 27));
+    }
+    println!("\x1b[36m│\x1b[0m \x1b[33m⚠  Branch stats in development\x1b[0m         \x1b[36m│\x1b[0m");
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    Ok(())
+}
+
+// Template management functions
+async fn handle_template_action(action: TemplateAction) -> Result<()> {
+    match action {
+        TemplateAction::Create { name, description, tags, workspace_path } => {
+            create_template(name, description, tags, workspace_path).await
+        }
+        TemplateAction::List => {
+            list_templates().await
+        }
+        TemplateAction::Delete { template } => {
+            delete_template(template).await
+        }
+        TemplateAction::Use { template, project_name, path } => {
+            use_template(template, project_name, path).await
+        }
+    }
+}
+
+async fn create_template(name: String, description: Option<String>, tags: Option<String>, workspace_path: Option<PathBuf>) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    let default_tags = tags
+        .map(|t| t.split(',').map(|s| s.trim().to_string()).collect())
+        .unwrap_or_default();
+    
+    let mut template = ProjectTemplate::new(name.clone())
+        .with_tags(default_tags);
+    
+    let desc_clone = description.clone();
+    if let Some(desc) = description {
+        template = template.with_description(desc);
+    }
+    if let Some(path) = workspace_path {
+        template = template.with_workspace_path(path);
+    }
+    
+    let _template_id = TemplateQueries::create(&db.connection, &template)?;
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m         \x1b[1;37mTemplate Created\x1b[0m                  \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m Name:     \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&name, 27));
+    if let Some(desc) = &desc_clone {
+        println!("\x1b[36m│\x1b[0m Desc:     \x1b[2;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(desc, 27));
+    }
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    Ok(())
+}
+
+async fn list_templates() -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    let templates = TemplateQueries::list_all(&db.connection)?;
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m          \x1b[1;37mTemplates\x1b[0m                      \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    
+    if templates.is_empty() {
+        println!("\x1b[36m│\x1b[0m No templates found.                      \x1b[36m│\x1b[0m");
+    } else {
+        for template in &templates {
+            println!("\x1b[36m│\x1b[0m 📋 \x1b[1;33m{:<25}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&template.name, 25));
+            if let Some(desc) = &template.description {
+                println!("\x1b[36m│\x1b[0m    \x1b[2;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(desc, 27));
+            }
+            println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
+        }
+    }
+    
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    Ok(())
+}
+
+async fn delete_template(_template: String) -> Result<()> {
+    println!("\x1b[33m⚠  Template deletion not yet implemented\x1b[0m");
+    Ok(())
+}
+
+async fn use_template(template: String, project_name: String, path: Option<PathBuf>) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    let templates = TemplateQueries::list_all(&db.connection)?;
+    let selected_template = templates.iter()
+        .find(|t| t.name == template || t.id.map(|id| id.to_string()) == Some(template.clone()))
+        .ok_or_else(|| anyhow::anyhow!("Template '{}' not found", template))?;
+    
+    // Initialize project with template
+    let project_path = path.unwrap_or_else(|| env::current_dir().unwrap());
+    let canonical_path = canonicalize_path(&project_path)?;
+    
+    // Check if project already exists
+    if ProjectQueries::find_by_path(&db.connection, &canonical_path)?.is_some() {
+        return Err(anyhow::anyhow!("Project already exists at this path"));
+    }
+    
+    let git_hash = if is_git_repository(&canonical_path) {
+        get_git_hash(&canonical_path)
+    } else {
+        None
+    };
+    
+    let template_desc = selected_template.description.clone();
+    let mut project = Project::new(project_name.clone(), canonical_path.clone())
+        .with_git_hash(git_hash)
+        .with_description(template_desc);
+    
+    let project_id = ProjectQueries::create(&db.connection, &project)?;
+    project.id = Some(project_id);
+    
+    // Apply template tags (project-tag associations not yet implemented)
+    // TODO: Implement project_tags table operations
+    
+    // Apply template goals
+    for goal_def in &selected_template.default_goals {
+        let mut goal = Goal::new(goal_def.name.clone(), goal_def.target_hours)
+            .with_project(project_id);
+        if let Some(desc) = &goal_def.description {
+            goal = goal.with_description(desc.clone());
+        }
+        GoalQueries::create(&db.connection, &goal)?;
+    }
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m    \x1b[1;37mProject Created from Template\x1b[0m          \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m Template: \x1b[33m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&selected_template.name, 27));
+    println!("\x1b[36m│\x1b[0m Project:   \x1b[33m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&project_name, 27));
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    Ok(())
+}
+
+// Workspace management functions
+async fn handle_workspace_action(action: WorkspaceAction) -> Result<()> {
+    match action {
+        WorkspaceAction::Create { name, description, path } => {
+            create_workspace(name, description, path).await
+        }
+        WorkspaceAction::List => {
+            list_workspaces().await
+        }
+        WorkspaceAction::AddProject { workspace, project } => {
+            add_project_to_workspace(workspace, project).await
+        }
+        WorkspaceAction::RemoveProject { workspace, project } => {
+            remove_project_from_workspace(workspace, project).await
+        }
+        WorkspaceAction::Projects { workspace } => {
+            list_workspace_projects(workspace).await
+        }
+        WorkspaceAction::Delete { workspace } => {
+            delete_workspace(workspace).await
+        }
+    }
+}
+
+async fn create_workspace(name: String, description: Option<String>, path: Option<PathBuf>) -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    let mut workspace = Workspace::new(name.clone());
+    let desc_clone = description.clone();
+    if let Some(desc) = description {
+        workspace = workspace.with_description(desc);
+    }
+    if let Some(p) = path {
+        workspace = workspace.with_path(p);
+    }
+    
+    let _workspace_id = WorkspaceQueries::create(&db.connection, &workspace)?;
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m        \x1b[1;37mWorkspace Created\x1b[0m                  \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m Name:     \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&name, 27));
+    if let Some(desc) = &desc_clone {
+        println!("\x1b[36m│\x1b[0m Desc:     \x1b[2;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(desc, 27));
+    }
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    Ok(())
+}
+
+async fn list_workspaces() -> Result<()> {
+    let db_path = get_database_path()?;
+    let db = Database::new(&db_path)?;
+    
+    let workspaces = WorkspaceQueries::list_all(&db.connection)?;
+    
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m          \x1b[1;37mWorkspaces\x1b[0m                      \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    
+    if workspaces.is_empty() {
+        println!("\x1b[36m│\x1b[0m No workspaces found.                     \x1b[36m│\x1b[0m");
+    } else {
+        for workspace in &workspaces {
+            println!("\x1b[36m│\x1b[0m 📁 \x1b[1;33m{:<25}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&workspace.name, 25));
+            if let Some(desc) = &workspace.description {
+                println!("\x1b[36m│\x1b[0m    \x1b[2;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(desc, 27));
+            }
+            println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
+        }
+    }
+    
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    Ok(())
+}
+
+async fn add_project_to_workspace(_workspace: String, _project: String) -> Result<()> {
+    println!("\x1b[33m⚠  Workspace project management in development\x1b[0m");
+    Ok(())
+}
+
+async fn remove_project_from_workspace(_workspace: String, _project: String) -> Result<()> {
+    println!("\x1b[33m⚠  Workspace project management in development\x1b[0m");
+    Ok(())
+}
+
+async fn list_workspace_projects(_workspace: String) -> Result<()> {
+    println!("\x1b[33m⚠  Workspace project listing in development\x1b[0m");
+    Ok(())
+}
+
+async fn delete_workspace(_workspace: String) -> Result<()> {
+    println!("\x1b[33m⚠  Workspace deletion in development\x1b[0m");
+    Ok(())
+}
+
+// Calendar integration functions
+async fn handle_calendar_action(action: CalendarAction) -> Result<()> {
+    match action {
+        CalendarAction::Add { name, start, end, event_type, project, description } => {
+            add_calendar_event(name, start, end, event_type, project, description).await
+        }
+        CalendarAction::List { from, to, project } => {
+            list_calendar_events(from, to, project).await
+        }
+        CalendarAction::Delete { id } => {
+            delete_calendar_event(id).await
+        }
+    }
+}
+
+async fn add_calendar_event(_name: String, _start: String, _end: Option<String>, _event_type: Option<String>, _project: Option<String>, _description: Option<String>) -> Result<()> {
+    println!("\x1b[33m⚠  Calendar integration in development\x1b[0m");
+    Ok(())
+}
+
+async fn list_calendar_events(_from: Option<String>, _to: Option<String>, _project: Option<String>) -> Result<()> {
+    println!("\x1b[33m⚠  Calendar integration in development\x1b[0m");
+    Ok(())
+}
+
+async fn delete_calendar_event(_id: i64) -> Result<()> {
+    println!("\x1b[33m⚠  Calendar integration in development\x1b[0m");
+    Ok(())
+}
+
+// Issue tracker integration functions
+async fn handle_issue_action(action: IssueAction) -> Result<()> {
+    match action {
+        IssueAction::Sync { project, tracker_type } => {
+            sync_issues(project, tracker_type).await
+        }
+        IssueAction::List { project, status } => {
+            list_issues(project, status).await
+        }
+        IssueAction::Link { session_id, issue_id } => {
+            link_session_to_issue(session_id, issue_id).await
+        }
+    }
+}
+
+async fn sync_issues(_project: String, _tracker_type: Option<String>) -> Result<()> {
+    println!("\x1b[33m⚠  Issue tracker integration in development\x1b[0m");
+    Ok(())
+}
+
+async fn list_issues(_project: String, _status: Option<String>) -> Result<()> {
+    println!("\x1b[33m⚠  Issue tracker integration in development\x1b[0m");
+    Ok(())
+}
+
+async fn link_session_to_issue(_session_id: i64, _issue_id: String) -> Result<()> {
+    println!("\x1b[33m⚠  Issue tracker integration in development\x1b[0m");
+    Ok(())
+}
+
+// Client reporting functions
+async fn handle_client_action(action: ClientAction) -> Result<()> {
+    match action {
+        ClientAction::Generate { client, from, to, projects, format } => {
+            generate_client_report(client, from, to, projects, format).await
+        }
+        ClientAction::List { client } => {
+            list_client_reports(client).await
+        }
+        ClientAction::View { id } => {
+            view_client_report(id).await
+        }
+    }
+}
+
+async fn generate_client_report(_client: String, _from: String, _to: String, _projects: Option<String>, _format: Option<String>) -> Result<()> {
+    println!("\x1b[33m⚠  Client reporting in development\x1b[0m");
+    Ok(())
+}
+
+async fn list_client_reports(_client: Option<String>) -> Result<()> {
+    println!("\x1b[33m⚠  Client reporting in development\x1b[0m");
+    Ok(())
+}
+
+async fn view_client_report(_id: i64) -> Result<()> {
+    println!("\x1b[33m⚠  Client reporting in development\x1b[0m");
+    Ok(())
+}
+
+fn should_quit(event: crossterm::event::Event) -> bool {
+    match event {
+        crossterm::event::Event::Key(key) if key.kind == crossterm::event::KeyEventKind::Press => {
+            matches!(key.code, crossterm::event::KeyCode::Char('q') | crossterm::event::KeyCode::Esc)
+        }
+        _ => false,
+    }
+}

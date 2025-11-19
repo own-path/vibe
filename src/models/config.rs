@@ -9,6 +9,7 @@ pub struct Config {
     pub max_session_hours: u32,
     pub backup_enabled: bool,
     pub log_level: String,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub custom_settings: HashMap<String, String>,
 }
 

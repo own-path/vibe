@@ -1,7 +1,9 @@
 pub mod dashboard;
 pub mod formatter;
 pub mod interactive;
+pub mod timer;
 pub mod widgets;
+pub mod history;
 
 use anyhow::Result;
 use crossterm::{
