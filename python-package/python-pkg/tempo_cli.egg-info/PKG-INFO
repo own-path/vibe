@@ -1,3 +1,64 @@
+Metadata-Version: 2.4
+Name: tempo-cli
+Version: 1.0.0
+Summary: The Most Advanced Automatic Project Time Tracker - Lightning-fast Rust-powered CLI
+Home-page: https://github.com/own-path/tempo
+Author: Own Path
+Author-email: Own Path <brandy.daryl@gmail.com>
+License: MIT License
+        
+        Copyright (c) 2024 Vibe Contributors
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+Project-URL: Homepage, https://github.com/own-path/tempo
+Project-URL: Bug Tracker, https://github.com/own-path/tempo/issues
+Project-URL: Documentation, https://docs.rs/tempo
+Project-URL: Source Code, https://github.com/own-path/tempo
+Project-URL: PyPI, https://pypi.org/project/tempo-cli/
+Keywords: time-tracking,productivity,cli,terminal,rust,project-management,goals,analytics,developer-tools,workspace,session-tracking,automatic,daemon
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Information Technology
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: MacOS
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Rust
+Classifier: Topic :: Office/Business :: Scheduling
+Classifier: Topic :: Software Development :: Tools
+Classifier: Topic :: System :: Monitoring
+Classifier: Topic :: Utilities
+Classifier: Environment :: Console
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Dynamic: author
+Dynamic: home-page
+Dynamic: license-file
+Dynamic: requires-python
+
 # Tempo CLI ⏱️
 
 **The Most Advanced Automatic Project Time Tracker**
@@ -112,8 +173,8 @@ All data stored locally for privacy:
 
 ## 🔗 Links
 
-- **Full Documentation**: [GitHub Repository](https://github.com/own-path/vibe)
-- **Issues**: [Bug Reports](https://github.com/own-path/vibe/issues)
+- **Full Documentation**: [GitHub Repository](https://github.com/own-path/tempo)
+- **Issues**: [Bug Reports](https://github.com/own-path/tempo/issues)
 - **PyPI Package**: [tempo-cli](https://pypi.org/project/tempo-cli/)
 
 ## 📄 License

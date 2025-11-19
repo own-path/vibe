@@ -4,37 +4,47 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tempo-cli"
-version = "0.1.0"
+version = "1.0.0"
 authors = [
     {name = "Own Path", email = "brandy.daryl@gmail.com"},
 ]
-description = "Automatic project time tracking CLI tool with beautiful terminal interface"
+description = "The Most Advanced Automatic Project Time Tracker - Lightning-fast Rust-powered CLI"
 readme = "README.md"
 license = {file = "LICENSE"}
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
     "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: Office/Business :: Scheduling",
     "Topic :: Software Development :: Tools",
+    "Topic :: System :: Monitoring",
     "Topic :: Utilities",
     "Environment :: Console",
 ]
-keywords = ["time-tracking", "productivity", "cli", "terminal", "rust"]
+keywords = [
+    "time-tracking", "productivity", "cli", "terminal", "rust", 
+    "project-management", "goals", "analytics", "developer-tools",
+    "workspace", "session-tracking", "automatic", "daemon"
+]
 
 [project.urls]
-Homepage = "https://github.com/own-path/tempo"
-"Bug Tracker" = "https://github.com/own-path/tempo/issues"
-"Documentation" = "https://github.com/own-path/tempo/blob/main/README.md"
-"Source Code" = "https://github.com/own-path/tempo"
+Homepage = "https://github.com/own-path/vibe"
+"Bug Tracker" = "https://github.com/own-path/vibe/issues"
+"Documentation" = "https://docs.rs/tempo"
+"Source Code" = "https://github.com/own-path/vibe"
+"PyPI" = "https://pypi.org/project/tempo-cli/"
 
 [project.scripts]
 tempo = "tempo_cli.main:main"
