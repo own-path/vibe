@@ -1,9 +1,19 @@
 [workspace]
-
+# Automatically bump version and create releases
+pr_draft = false
+pr_labels = ["release"]
+git_release_enable = true
+git_tag_enable = true
+changelog_update = true
 
 [[package]]
 name = "tempo-cli"
+# Conventional commit based version bumping
+semver_check = false
+# Always bump patch version for any commit to main
+release = true
 # Run sync script after version bump but before commit
 post_version_bump_command = [
+    { cmd = "chmod +x ./scripts/sync_version.sh" },
     { cmd = "./scripts/sync_version.sh" }
 ]
