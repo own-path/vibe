@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/own-path/vibe/compare/v0.2.0...v0.2.1) - 2025-11-21
+
+### Other
+
+- Fix release-plz configuration and workflow
+- Set up automatic version bumping on every commit
+- Complete comprehensive codebase improvements and async patterns
+
 ### Added
 - Initial project setup with Rust and Cargo
 - Daemon architecture for background time tracking
