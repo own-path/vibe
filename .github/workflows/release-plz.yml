@@ -85,6 +85,11 @@ jobs:
           
           # Build Python package
           cd python-package/python-pkg
+          
+          # Clean dist directory to remove old/cached packages  
+          rm -rf dist/
+          mkdir -p dist/
+          
           python -m build
           
           # Verify package contents
