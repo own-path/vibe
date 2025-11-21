@@ -8,5 +8,7 @@ changelog_update = true
 name = "tempo-cli"
 # Allow any version changes
 semver_check = false
-# Enable releases for this package
+# Enable releases for this package but skip crates.io publishing
 release = true
+# Skip publishing to crates.io
+publish = false
