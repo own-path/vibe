@@ -1,279 +1,279 @@
 # Tempo
 
-**Simple, Fast Project Time Tracking for Developers**
+> **Simple, Fast, and Privacy-Focused Time Tracking for Developers**
 
-A lightweight Rust-powered time tracking CLI that automatically detects your project context and tracks time across multiple projects. Built for developers who want accurate time tracking without complexity.
+[![PyPI](https://img.shields.io/pypi/v/tempo-cli?style=flat-square&color=blue)](https://pypi.org/project/tempo-cli/)
+[![Crates.io](https://img.shields.io/crates/v/tempo-cli.svg?style=flat-square&color=orange)](https://crates.io/crates/tempo-cli)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![Downloads](https://img.shields.io/pypi/dm/tempo-cli?style=flat-square)](https://pypi.org/project/tempo-cli/)
 
-[![PyPI](https://img.shields.io/pypi/v/tempo-cli)](https://pypi.org/project/tempo-cli/)
-[![Crates.io](https://img.shields.io/crates/v/tempo-cli.svg)](https://crates.io/crates/tempo-cli)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Downloads](https://img.shields.io/pypi/dm/tempo-cli)](https://pypi.org/project/tempo-cli/)
-
----
-
-## Why Tempo?
-
-**Simple & Effective**: Start tracking time in seconds - no complex setup or configuration required.
-
-**Developer-Focused**: Automatically detects Git repositories and project structures. Understands your workflow.
-
-**Fast & Lightweight**: Rust-powered daemon uses minimal system resources. Commands respond instantly.
-
-**Privacy-First**: All data stored locally in SQLite. No cloud services, no data collection.
-
-**Cross-Platform**: Works on macOS, Linux, and Windows from any terminal.
+Tempo is a lightweight, terminal-based time tracking tool designed specifically for developers. It automatically detects your project context, tracks time with precision, and stores everything locally. No cloud services, no subscriptions, just a fast binary that gets out of your way.
 
 ---
 
-## Installation
+## 📖 Table of Contents
 
-### Python/UV (Recommended)
-```bash
-# Install with uv (fastest)
-uv install tempo-cli
+- [Why Tempo?](#-why-tempo)
+- [Features](#-features)
+- [Architecture](#-architecture)
+- [Installation](#-installation)
+- [Quick Start](#-quick-start)
+- [Usage Guide](#-usage-guide)
+  - [Session Management](#session-management)
+  - [Project Management](#project-management)
+  - [Reporting](#reporting)
+  - [Interactive UI](#interactive-ui)
+- [Configuration](#-configuration)
+- [Troubleshooting](#-troubleshooting)
+- [Contributing](#-contributing)
+- [License](#-license)
 
-# Or with pip
-pip install tempo-cli
+---
 
-# Start using immediately
-tempo start
-tempo session start
+## 🚀 Why Tempo?
+
+- **Zero Friction**: Start tracking in seconds. Tempo infers your project from your current directory.
+- **Local & Private**: Your data lives on your machine in a standard SQLite database. You own it.
+- **Resource Efficient**: The background daemon is written in Rust, consuming negligible CPU and memory (< 5MB).
+- **Developer Native**: Integrates with your existing workflow. Detects Git, Node, Rust, Python, and Go projects automatically.
+- **Terminal First**: Includes a beautiful TUI dashboard and interactive timer for those who live in the terminal.
+
+---
+
+## ✨ Features
+
+### 🧠 Smart Context Detection
+Tempo automatically recognizes project roots by looking for common markers:
+- `.git/`
+- `package.json`
+- `Cargo.toml`
+- `pyproject.toml` / `requirements.txt`
+- `go.mod`
+- `pom.xml`
+
+### ⏱️ Intelligent Session Management
+- **Auto-Resume**: Pick up exactly where you left off.
+- **Idle Detection**: Automatically pauses tracking when you step away (configurable).
+- **Concurrent Projects**: Switch contexts instantly without losing data.
+
+### 📊 Powerful Reporting
+Generate detailed reports to analyze your productivity or for billing purposes:
+- **Formats**: ASCII tables, CSV, JSON.
+- **Filters**: Date ranges, specific projects, or tags.
+- **Aggregation**: View daily, weekly, or project-based totals.
+
+### 🖥️ Interactive Dashboard
+A full-featured Terminal User Interface (TUI) offering:
+- Real-time status monitoring.
+- Visual project switcher.
+- Activity timeline and statistics.
+- Keyboard-driven navigation.
+
+---
+
+## 🏗️ Architecture
+
+Tempo follows a **Client-Daemon** architecture to ensure reliability and speed.
+
+```mermaid
+graph LR
+    CLI[Tempo CLI] -- Unix Socket --> Daemon[Tempo Daemon]
+    Daemon -- Reads/Writes --> DB[(SQLite DB)]
+    Daemon -- Monitors --> System[System Activity]
 ```
 
-### Rust
+1.  **CLI**: A thin client that sends commands to the daemon. It exits immediately, keeping your shell responsive.
+2.  **Daemon**: A background process that manages state, handles database I/O, and monitors system idle time. It ensures time is tracked accurately even if you close your terminal.
+3.  **Storage**: All data is persisted in a local SQLite database at `~/.tempo/data.db`.
+
+---
+
+## 📥 Installation
+
+### Option 1: Python / UV (Recommended)
+The easiest way to install Tempo is via `uv` or `pip`. This ensures you get the latest version with minimal fuss.
+
+```bash
+# Fast installation with uv
+uv install tempo-cli
+
+# Or using standard pip
+pip install tempo-cli
+```
+
+### Option 2: Rust / Cargo
+If you have a Rust toolchain installed, you can build from source or install from crates.io.
+
 ```bash
 # Install from crates.io
 cargo install tempo-cli
 
-# Or build from source
+# Build from source
 git clone https://github.com/own-path/vibe.git
 cd vibe
 ./install.sh
 ```
 
-### Compatibility Note
-For the best experience with the TUI dashboard, we recommend using a terminal that supports **TrueColor** (24-bit color) and a **Nerd Font** (for icons).
-- **Colors**: If your terminal doesn't support TrueColor, the interface will degrade gracefully to standard ANSI colors.
-- **Icons**: If you see missing characters (boxes), install a [Nerd Font](https://www.nerdfonts.com/) like "JetBrainsMono Nerd Font" or "FiraCode Nerd Font".
+### System Requirements
+- **OS**: macOS, Linux, or Windows (WSL recommended).
+- **Terminal**: A terminal with TrueColor support (e.g., iTerm2, Alacritty, Ghostty) and a [Nerd Font](https://www.nerdfonts.com/) installed is recommended for the best TUI experience.
 
 ---
 
-## Core Features
+## ⚡ Quick Start
 
-### Time Tracking
-- **Automatic Project Detection** - Recognizes Git repositories, package.json, Cargo.toml files
-- **Session Management** - Start, stop, pause, and resume tracking sessions
-- **Background Daemon** - Lightweight service runs automatically in background
-- **Multi-Project Support** - Track multiple projects without switching configurations
+1.  **Start the Daemon**
+    ```bash
+    tempo start
+    ```
 
-### Project Management
-- **Project Organization** - Initialize and manage project tracking
-- **Session History** - Browse and edit past tracking sessions
-- **Time Reports** - Generate reports with CSV/JSON export
-- **Project Archiving** - Archive completed projects while preserving data
+2.  **Initialize a Project**
+    Navigate to your project folder and tell Tempo to track it.
+    ```bash
+    cd ~/my-cool-project
+    tempo init "My Cool Project"
+    ```
 
-### User Interface
-- **Interactive Dashboard** - Real-time tracking status and project overview
-- **Terminal UI** - Browse projects and sessions with keyboard navigation
-- **Timer Interface** - Visual timer with progress tracking
-- **Configurable Settings** - Customize behavior through configuration files
+3.  **Start Tracking**
+    ```bash
+    tempo session start
+    ```
+    *Tempo will confirm that tracking has started for "My Cool Project".*
 
----
+4.  **Check Status**
+    ```bash
+    tempo status
+    ```
 
-## Quick Start
-
-```bash
-# Start the daemon
-tempo start
-
-# Initialize a project (in your project directory)
-tempo init "My Project"
-
-# Start tracking
-tempo session start
-
-# Check status
-tempo status
-
-# View dashboard
-tempo dashboard
-
-# Stop tracking
-tempo session stop
-
-# Generate report
-tempo report --format csv
-```
+5.  **View the Dashboard**
+    ```bash
+    tempo dashboard
+    ```
 
 ---
 
-## Available Commands
+## 📖 Usage Guide
 
 ### Session Management
+
+| Command | Description |
+|---------|-------------|
+| `tempo session start` | Start tracking time for the current project. |
+| `tempo session stop` | Stop the current session. |
+| `tempo session pause` | Pause the current session (useful for breaks). |
+| `tempo session resume` | Resume a paused session. |
+| `tempo session current` | Display details of the active session. |
+| `tempo session list` | Show a history of recent sessions. |
+| `tempo session edit <id>` | Modify a past session (e.g., fix start/end times). |
+| `tempo session delete <id>` | Permanently remove a session. |
+
+### Project Management
+
+| Command | Description |
+|---------|-------------|
+| `tempo init "<Name>"` | Initialize tracking for the current directory. |
+| `tempo list` | List all tracked projects. |
+| `tempo project archive <id>` | Archive a project (hides it from default lists). |
+| `tempo project update-path` | Update the path if you moved the project folder. |
+
+### Reporting
+
+Generate reports to visualize your time usage.
+
 ```bash
-tempo session start        # Begin tracking current project
-tempo session stop         # Stop current session
-tempo session pause        # Pause tracking
-tempo session resume       # Resume tracking
-tempo session current      # Show active session
-tempo session list         # List recent sessions
-tempo session edit <id>    # Edit session details
-tempo session delete <id>  # Delete a session
+# Standard ASCII report
+tempo report
+
+# Export to CSV for Excel/Numbers
+tempo report --format csv > timesheet.csv
+
+# Filter by date
+tempo report --from 2024-01-01 --to 2024-01-31
+
+# Filter by project
+tempo report --project "My Cool Project"
 ```
 
-### Project Operations
-```bash
-tempo init "Project Name"   # Initialize project tracking
-tempo list                  # List all projects
-tempo list --archived       # Include archived projects
-tempo project archive <id> # Archive a project
-tempo project unarchive <id> # Restore archived project
-tempo project update-path <id> <path> # Update project path
-```
+### Interactive UI
 
-### Reporting & Analytics
-```bash
-tempo report               # Terminal-formatted time report
-tempo report --format csv  # Export to CSV
-tempo report --format json # Export to JSON
-tempo report --from 2024-01-01 # Date range filter
-tempo report --project <id> # Project-specific report
-```
-
-### Interactive Interfaces
-```bash
-tempo dashboard           # Real-time tracking dashboard
-tempo timer              # Visual timer interface
-tempo history            # Browse session history
-```
-
-### Configuration
-```bash
-tempo config show        # View current settings
-tempo config set <key> <value> # Update setting
-tempo config reset       # Reset to defaults
-```
-
-### Daemon Control
-```bash
-tempo start              # Start background daemon
-tempo stop               # Stop daemon
-tempo restart            # Restart daemon
-tempo status             # Show daemon and session status
-```
+- **`tempo dashboard`**: The main command center. View active sessions, switch projects, and see daily stats.
+- **`tempo timer`**: A focused, full-screen timer view. Great for keeping on a secondary monitor.
+- **`tempo history`**: An interactive browser for your session history.
 
 ---
 
-## Configuration
+## ⚙️ Configuration
 
-Tempo stores configuration in `~/.tempo/config.toml`:
+Tempo is highly configurable. Settings are stored in `~/.tempo/config.toml`.
 
-```toml
-idle_timeout_minutes = 15
-auto_pause_enabled = true
-default_context = "terminal"
-log_level = "info"
-```
+You can view and modify settings via the CLI:
 
-Available settings:
-- `idle_timeout_minutes` - Auto-pause after inactivity (default: 15)
-- `auto_pause_enabled` - Enable automatic pausing (default: true)
-- `default_context` - Default tracking context (default: "terminal")
-- `log_level` - Logging verbosity: error, warn, info, debug (default: "info")
-
-Update settings with: `tempo config set <key> <value>`
-
----
-
-## Data Storage
-
-All data is stored locally in `~/.tempo/`:
-
-```
-~/.tempo/
-├── data.db              # SQLite database (all tracking data)
-├── config.toml          # Configuration settings
-├── daemon.sock          # IPC socket for daemon communication
-├── daemon.pid           # Daemon process ID
-└── logs/
-    └── tempo.log        # Application logs
-```
-
-**Privacy**: No data ever leaves your machine. No telemetry or tracking.
-
----
-
-## Project Detection
-
-Tempo automatically detects projects by scanning for:
-
-- **Git repositories** (`.git/` directory)
-- **Node.js projects** (`package.json`)
-- **Rust projects** (`Cargo.toml`)
-- **Python projects** (`pyproject.toml`, `setup.py`, `requirements.txt`)
-- **Go projects** (`go.mod`)
-- **Java projects** (`pom.xml`, `build.gradle`)
-- **And many more...**
-
-When you run `tempo session start` in a recognized project directory, tracking begins automatically.
-
----
-
-## Performance
-
-- **Memory Usage**: < 1MB for daemon process
-- **CPU Overhead**: Negligible on modern systems
-- **Startup Time**: < 100ms for all commands
-- **Database Size**: ~1MB per year of tracking data
-- **Battery Impact**: Minimal on laptops
-
----
-
-## Contributing
-
-Contributions welcome! This is an active open-source project.
-
-### Development Setup
 ```bash
-git clone https://github.com/own-path/vibe.git
-cd vibe
-cargo build
-cargo test
-cargo run -- status
+# View current config
+tempo config show
+
+# Set a value
+tempo config set idle_timeout_minutes 10
 ```
 
-### Pull Requests
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Submit a pull request with clear description
+### Available Options
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `idle_timeout_minutes` | Number | `30` | Minutes of inactivity before auto-pausing. |
+| `auto_pause_enabled` | Boolean | `true` | Whether to enable auto-pause functionality. |
+| `default_context` | String | `"terminal"` | Default tag for sessions (`terminal`, `ide`, `manual`). |
+| `max_session_hours` | Number | `48` | Safety limit to auto-stop extremely long sessions. |
+| `backup_enabled` | Boolean | `true` | Enable automatic database backups. |
+| `log_level` | String | `"info"` | Log verbosity (`error`, `warn`, `info`, `debug`). |
+
+---
+
+## 🔧 Troubleshooting
+
+### Daemon Not Starting
+If `tempo start` fails, check if a stale PID file exists:
+```bash
+rm ~/.tempo/daemon.pid
+tempo start
+```
+
+### "Connection Refused"
+This usually means the daemon isn't running. Start it with:
+```bash
+tempo start
+```
+
+### Missing Icons in TUI
+If you see boxes `[]` or `?` instead of icons, ensure you are using a [Nerd Font](https://www.nerdfonts.com/) in your terminal emulator.
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Whether it's bug reports, feature requests, or code, your help is appreciated.
+
+1.  **Fork** the repository.
+2.  **Create** a feature branch (`git checkout -b feature/amazing-feature`).
+3.  **Commit** your changes.
+4.  **Push** to the branch.
+5.  **Open** a Pull Request.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ### Release Process
-
-Releases are automated using [release-plz](https://github.com/MarcoIeni/release-plz).
-- **Automated PRs**: `release-plz` creates a PR with version bumps and changelog updates when changes are detected.
-- **Publishing**: When the release PR is merged to `main`, a new release is automatically published to Crates.io and PyPI.
-
----
-
-## License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
-Free to use in personal and commercial projects.
+Releases are automated via [release-plz](https://github.com/MarcoIeni/release-plz).
+- **PRs**: Automated PRs are created for version bumps.
+- **Publishing**: Merging to `main` triggers publication to Crates.io and PyPI.
 
 ---
 
-## Support
+## 📄 License
 
-- **Issues**: [GitHub Issues](https://github.com/own-path/vibe/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/own-path/vibe/discussions)
-- **Documentation**: Available in the repository wiki
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
 
 ---
 
-**Built for developers who value simplicity and accuracy in time tracking.**
-
-Star the project if it helps you track time effectively!
-
-Get started: `uv install tempo-cli`
+<div align="center">
+  <sub>Built with ❤️ by Developers, for Developers.</sub>
+</div>
