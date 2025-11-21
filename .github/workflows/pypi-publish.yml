@@ -39,7 +39,7 @@ jobs:
         run: |
           cp README.md python-package/python-pkg/
           
-      - name: Sync version from Cargo.toml to setup.py
+      - name: Sync version from Cargo.toml to setup.py and pyproject.toml
         run: |
           # Extract version from Cargo.toml
           CARGO_VERSION=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
@@ -48,9 +48,14 @@ jobs:
           # Update setup.py version
           sed -i "s/version=\"[^\"]*\"/version=\"$CARGO_VERSION\"/" python-package/python-pkg/setup.py
           
-          # Verify the change
+          # Update pyproject.toml version
+          sed -i "s/version = \"[^\"]*\"/version = \"$CARGO_VERSION\"/" python-package/python-pkg/pyproject.toml
+          
+          # Verify the changes
           echo "Updated setup.py version:"
           grep "version=" python-package/python-pkg/setup.py
+          echo "Updated pyproject.toml version:"
+          grep "version =" python-package/python-pkg/pyproject.toml
 
       - name: Build Python package
         run: |

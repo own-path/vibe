@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tempo-cli"
+name = "tempo-tracker-cli"
 version = "0.2.6"
 authors = [
     {name = "Own Path", email = "brandy.daryl@gmail.com"},
@@ -28,7 +28,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Rust",
     "Topic :: Office/Business :: Scheduling",
-    "Topic :: Software Development :: Tools",
+    "Topic :: Software Development",
     "Topic :: System :: Monitoring",
     "Topic :: Utilities",
     "Environment :: Console",
@@ -44,7 +44,7 @@ Homepage = "https://github.com/own-path/vibe"
 "Bug Tracker" = "https://github.com/own-path/vibe/issues"
 "Documentation" = "https://docs.rs/tempo"
 "Source Code" = "https://github.com/own-path/vibe"
-"PyPI" = "https://pypi.org/project/tempo-cli/"
+"PyPI" = "https://pypi.org/project/tempo-tracker-cli/"
 
 [project.scripts]
 tempo = "tempo_cli.main:main"
