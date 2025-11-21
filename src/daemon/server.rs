@@ -168,7 +168,9 @@ async fn handle_message(message: IpcMessage, state: &SharedDaemonState) -> IpcRe
             let state_guard = state.read().await;
             let db = match state_guard.db.lock() {
                 Ok(db) => db,
-                Err(e) => return IpcResponse::Error(format!("Failed to acquire database lock: {}", e)),
+                Err(e) => {
+                    return IpcResponse::Error(format!("Failed to acquire database lock: {}", e))
+                }
             };
             match ProjectQueries::find_by_id(&db.connection, project_id) {
                 Ok(project) => IpcResponse::Project(project),
@@ -180,7 +182,9 @@ async fn handle_message(message: IpcMessage, state: &SharedDaemonState) -> IpcRe
             let state_guard = state.read().await;
             let db = match state_guard.db.lock() {
                 Ok(db) => db,
-                Err(e) => return IpcResponse::Error(format!("Failed to acquire database lock: {}", e)),
+                Err(e) => {
+                    return IpcResponse::Error(format!("Failed to acquire database lock: {}", e))
+                }
             };
 
             // Get completed sessions for the day
@@ -244,6 +248,20 @@ async fn handle_message(message: IpcMessage, state: &SharedDaemonState) -> IpcRe
 
         IpcMessage::UnsubscribeFromUpdates => IpcResponse::Ok,
 
+        IpcMessage::ListProjects => {
+            let state_guard = state.read().await;
+            let db = match state_guard.db.lock() {
+                Ok(db) => db,
+                Err(e) => {
+                    return IpcResponse::Error(format!("Failed to acquire database lock: {}", e))
+                }
+            };
+            match ProjectQueries::list_all(&db.connection, false) {
+                Ok(projects) => IpcResponse::ProjectList(projects),
+                Err(e) => IpcResponse::Error(format!("Failed to list projects: {}", e)),
+            }
+        }
+
         IpcMessage::SwitchProject(project_id) => {
             let mut state_guard = state.write().await;
 
@@ -257,9 +275,14 @@ async fn handle_message(message: IpcMessage, state: &SharedDaemonState) -> IpcRe
             // Start new session for the selected project
             let project = {
                 let db = match state_guard.db.lock() {
-                Ok(db) => db,
-                Err(e) => return IpcResponse::Error(format!("Failed to acquire database lock: {}", e)),
-            };
+                    Ok(db) => db,
+                    Err(e) => {
+                        return IpcResponse::Error(format!(
+                            "Failed to acquire database lock: {}",
+                            e
+                        ))
+                    }
+                };
                 match ProjectQueries::find_by_id(&db.connection, project_id) {
                     Ok(Some(p)) => Some(p),
                     Ok(None) => None,

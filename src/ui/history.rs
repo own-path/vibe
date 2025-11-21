@@ -4,9 +4,9 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{List, ListItem, Paragraph},
     Frame, Terminal,
 };
 use std::time::Duration;
@@ -15,7 +15,7 @@ use crate::{
     db::queries::SessionQueries,
     db::{get_database_path, Database},
     models::Session,
-    ui::formatter::Formatter,
+    ui::{formatter::Formatter, widgets::ColorScheme},
 };
 
 pub struct SessionHistoryBrowser {
@@ -93,22 +93,24 @@ impl SessionHistoryBrowser {
             .split(f.size());
 
         // Title
+        // Title
         let title = Paragraph::new("Session History Browser")
             .style(
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(ColorScheme::CLEAN_ACCENT)
                     .add_modifier(Modifier::BOLD),
             )
             .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::ALL));
+            .block(ColorScheme::clean_block());
         f.render_widget(title, chunks[0]);
 
         // Session list
+        // Session list
         if self.sessions.is_empty() {
             let no_sessions = Paragraph::new("No sessions found")
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(ColorScheme::CLEAN_GOLD))
                 .alignment(Alignment::Center)
-                .block(Block::default().borders(Borders::ALL).title("Sessions"));
+                .block(ColorScheme::clean_block().title("Sessions"));
             f.render_widget(no_sessions, chunks[1]);
         } else {
             let session_items: Vec<ListItem> = self
@@ -118,11 +120,11 @@ impl SessionHistoryBrowser {
                 .map(|(i, session)| {
                     let style = if i == self.selected_index {
                         Style::default()
-                            .fg(Color::Black)
-                            .bg(Color::Cyan)
+                            .fg(ColorScheme::CLEAN_BG)
+                            .bg(ColorScheme::CLEAN_ACCENT)
                             .add_modifier(Modifier::BOLD)
                     } else {
-                        Style::default().fg(Color::White)
+                        Style::default().fg(ColorScheme::WHITE_TEXT)
                     };
 
                     let duration = if let Some(end) = session.end_time {
@@ -133,15 +135,29 @@ impl SessionHistoryBrowser {
                             - session.paused_duration.num_seconds()
                     };
 
-                    let context_color = match session.context.to_string().as_str() {
-                        "terminal" => Color::Cyan,
-                        "ide" => Color::Magenta,
-                        "linked" => Color::Yellow,
-                        "manual" => Color::Blue,
-                        _ => Color::White,
+                    let context_color = if i == self.selected_index {
+                        ColorScheme::CLEAN_BG
+                    } else {
+                        match session.context.to_string().as_str() {
+                            "terminal" => ColorScheme::CLEAN_ACCENT,
+                            "ide" => ColorScheme::CLEAN_BLUE,
+                            "linked" => ColorScheme::CLEAN_GOLD,
+                            "manual" => ColorScheme::CLEAN_GREEN,
+                            _ => ColorScheme::WHITE_TEXT,
+                        }
                     };
 
                     let start_time = session.start_time.with_timezone(&Local);
+                    let duration_color = if i == self.selected_index {
+                        ColorScheme::CLEAN_BG
+                    } else {
+                        ColorScheme::CLEAN_GREEN
+                    };
+                    let date_color = if i == self.selected_index {
+                        ColorScheme::CLEAN_BG
+                    } else {
+                        ColorScheme::GRAY_TEXT
+                    };
 
                     let content = vec![
                         Line::from(vec![
@@ -149,13 +165,13 @@ impl SessionHistoryBrowser {
                             Span::raw("  "),
                             Span::styled(
                                 Formatter::format_duration(duration),
-                                Style::default().fg(Color::Green),
+                                Style::default().fg(duration_color),
                             ),
                         ]),
                         Line::from(vec![
                             Span::styled(
                                 format!("{}", start_time.format("%Y-%m-%d %H:%M:%S")),
-                                Style::default().fg(Color::Gray),
+                                Style::default().fg(date_color),
                             ),
                             Span::raw("  "),
                             Span::styled(
@@ -170,8 +186,8 @@ impl SessionHistoryBrowser {
                 .collect();
 
             let sessions_list = List::new(session_items)
-                .block(Block::default().borders(Borders::ALL).title("Sessions"))
-                .style(Style::default().fg(Color::White));
+                .block(ColorScheme::clean_block().title("Sessions"))
+                .style(Style::default().fg(ColorScheme::WHITE_TEXT));
             f.render_widget(sessions_list, chunks[1]);
         }
 
@@ -183,9 +199,9 @@ impl SessionHistoryBrowser {
         };
 
         let help = Paragraph::new(help_text)
-            .style(Style::default().fg(Color::Gray))
+            .style(Style::default().fg(ColorScheme::GRAY_TEXT))
             .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::ALL));
+            .block(ColorScheme::clean_block());
         f.render_widget(help, chunks[2]);
     }
 }

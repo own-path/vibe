@@ -7,30 +7,39 @@ use tokio::net::{UnixListener, UnixStream};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IpcMessage {
     // Project tracking
-    ProjectEntered { path: PathBuf, context: String },
-    ProjectLeft { path: PathBuf },
-    
+    ProjectEntered {
+        path: PathBuf,
+        context: String,
+    },
+    ProjectLeft {
+        path: PathBuf,
+    },
+
     // Session control
-    StartSession { project_path: Option<PathBuf>, context: String },
+    StartSession {
+        project_path: Option<PathBuf>,
+        context: String,
+    },
     StopSession,
     PauseSession,
     ResumeSession,
-    
+
     // Status queries
     GetStatus,
     GetActiveSession,
     GetProject(i64),
     GetDailyStats(chrono::NaiveDate),
     GetSessionMetrics(i64),
-    
+
     // Real-time monitoring
     SubscribeToUpdates,
     UnsubscribeFromUpdates,
     ActivityHeartbeat,
-    
+
     // Project switching
     SwitchProject(i64),
-    
+    ListProjects,
+
     // Daemon control
     Ping,
     Shutdown,
@@ -41,13 +50,14 @@ pub enum IpcResponse {
     Ok,
     Success,
     Error(String),
-    Status { 
-        daemon_running: bool, 
+    Status {
+        daemon_running: bool,
         active_session: Option<SessionInfo>,
         uptime: u64,
     },
     ActiveSession(Option<crate::models::Session>),
     Project(Option<crate::models::Project>),
+    ProjectList(Vec<crate::models::Project>),
     DailyStats {
         sessions_count: i64,
         total_seconds: i64,
@@ -117,7 +127,7 @@ impl IpcServer {
         }
 
         let listener = UnixListener::bind(socket_path)?;
-        
+
         // Set socket permissions (Unix only)
         #[cfg(unix)]
         {
@@ -141,7 +151,9 @@ pub struct IpcClient {
 impl IpcClient {
     pub async fn connect(socket_path: &PathBuf) -> Result<Self> {
         let stream = UnixStream::connect(socket_path).await?;
-        Ok(Self { stream: Some(stream) })
+        Ok(Self {
+            stream: Some(stream),
+        })
     }
 
     pub fn new() -> Result<Self> {
@@ -149,8 +161,11 @@ impl IpcClient {
     }
 
     pub async fn send_message(&mut self, message: &IpcMessage) -> Result<IpcResponse> {
-        let stream = self.stream.as_mut().ok_or_else(|| anyhow::anyhow!("No connection established"))?;
-        
+        let stream = self
+            .stream
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("No connection established"))?;
+
         // Serialize message
         let serialized = serde_json::to_vec(message)?;
         let len = serialized.len() as u32;
@@ -174,7 +189,7 @@ pub async fn read_ipc_message(stream: &mut UnixStream) -> Result<IpcMessage> {
     let len = stream.read_u32().await?;
     let mut buffer = vec![0; len as usize];
     stream.read_exact(&mut buffer).await?;
-    
+
     let message: IpcMessage = serde_json::from_slice(&buffer)?;
     Ok(message)
 }
@@ -182,10 +197,10 @@ pub async fn read_ipc_message(stream: &mut UnixStream) -> Result<IpcMessage> {
 pub async fn write_ipc_response(stream: &mut UnixStream, response: &IpcResponse) -> Result<()> {
     let serialized = serde_json::to_vec(response)?;
     let len = serialized.len() as u32;
-    
+
     stream.write_u32(len).await?;
     stream.write_all(&serialized).await?;
-    
+
     Ok(())
 }
 
@@ -211,7 +226,7 @@ pub fn read_pid_file() -> Result<Option<u32>> {
     if !pid_path.exists() {
         return Ok(None);
     }
-    
+
     let contents = std::fs::read_to_string(pid_path)?;
     let pid = contents.trim().parse::<u32>()?;
     Ok(Some(pid))
@@ -231,15 +246,11 @@ pub fn is_daemon_running() -> bool {
         #[cfg(unix)]
         {
             use std::process::Command;
-            if let Ok(output) = Command::new("kill")
-                .arg("-0")
-                .arg(pid.to_string())
-                .output()
-            {
+            if let Ok(output) = Command::new("kill").arg("-0").arg(pid.to_string()).output() {
                 return output.status.success();
             }
         }
-        
+
         #[cfg(windows)]
         {
             use std::process::Command;
@@ -254,6 +265,6 @@ pub fn is_daemon_running() -> bool {
             }
         }
     }
-    
+
     false
 }

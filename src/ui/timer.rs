@@ -6,12 +6,18 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Gauge, Paragraph, Wrap},
+    widgets::{Gauge, Paragraph, Wrap},
     Frame, Terminal,
 };
 use std::time::Duration as StdDuration;
 
-use crate::{ui::formatter::Formatter, utils::ipc::IpcClient};
+use crate::{
+    ui::{
+        formatter::Formatter,
+        widgets::{ColorScheme, Throbber},
+    },
+    utils::ipc::IpcClient,
+};
 
 pub struct InteractiveTimer {
     client: IpcClient,
@@ -20,6 +26,7 @@ pub struct InteractiveTimer {
     total_paused: Duration,
     target_duration: i64, // in seconds
     show_milestones: bool,
+    throbber: Throbber,
 }
 
 impl InteractiveTimer {
@@ -41,6 +48,7 @@ impl InteractiveTimer {
             total_paused: Duration::zero(),
             target_duration: 25 * 60, // Default 25 minutes (Pomodoro)
             show_milestones: true,
+            throbber: Throbber::new(),
         })
     }
 
@@ -85,14 +93,15 @@ impl InteractiveTimer {
             .split(f.size());
 
         // Title
+        // Title
         let title = Paragraph::new("Interactive Timer")
             .style(
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(ColorScheme::CLEAN_ACCENT)
                     .add_modifier(Modifier::BOLD),
             )
             .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::ALL));
+            .block(ColorScheme::clean_block());
         f.render_widget(title, chunks[0]);
 
         // Timer display
@@ -134,7 +143,7 @@ impl InteractiveTimer {
             Line::from(Span::styled(
                 time_display,
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(ColorScheme::CLEAN_BLUE)
                     .add_modifier(Modifier::BOLD),
             )),
             Line::from(Span::raw("")),
@@ -146,20 +155,27 @@ impl InteractiveTimer {
                         .fg(status_color)
                         .add_modifier(Modifier::BOLD),
                 ),
+                if is_running {
+                    Span::styled(
+                        format!("  {}", self.throbber.current()),
+                        Style::default().fg(ColorScheme::CLEAN_ACCENT),
+                    )
+                } else {
+                    Span::raw("")
+                },
             ]),
             Line::from(vec![
                 Span::raw("Target: "),
                 Span::styled(
                     Formatter::format_duration(self.target_duration),
-                    Style::default().fg(Color::White),
+                    Style::default().fg(ColorScheme::WHITE_TEXT),
                 ),
             ]),
         ];
 
-        let timer_block = Block::default()
-            .borders(Borders::ALL)
+        let timer_block = ColorScheme::clean_block()
             .title("Timer")
-            .style(Style::default().fg(Color::White));
+            .style(Style::default().fg(ColorScheme::WHITE_TEXT));
 
         let paragraph = Paragraph::new(timer_text)
             .block(timer_block)
@@ -177,19 +193,18 @@ impl InteractiveTimer {
         };
 
         let progress_color = if progress >= 100.0 {
-            Color::Green
+            ColorScheme::CLEAN_GREEN
         } else if progress >= 75.0 {
             Color::Yellow
         } else {
-            Color::Cyan
+            ColorScheme::CLEAN_ACCENT
         };
 
         let progress_bar = Gauge::default()
             .block(
-                Block::default()
-                    .borders(Borders::ALL)
+                ColorScheme::clean_block()
                     .title("Progress to Target")
-                    .style(Style::default().fg(Color::White)),
+                    .style(Style::default().fg(ColorScheme::WHITE_TEXT)),
             )
             .gauge_style(Style::default().fg(progress_color))
             .percent(progress as u16)
@@ -218,9 +233,9 @@ impl InteractiveTimer {
             let achieved = elapsed >= duration;
             let icon = if achieved { "[x]" } else { "[ ]" };
             let style = if achieved {
-                Style::default().fg(Color::Green)
+                Style::default().fg(ColorScheme::CLEAN_GREEN)
             } else {
-                Style::default().fg(Color::Gray)
+                Style::default().fg(ColorScheme::GRAY_TEXT)
             };
 
             milestone_lines.push(Line::from(vec![Span::styled(
@@ -229,10 +244,9 @@ impl InteractiveTimer {
             )]));
         }
 
-        let milestones_block = Block::default()
-            .borders(Borders::ALL)
+        let milestones_block = ColorScheme::clean_block()
             .title("Milestones")
-            .style(Style::default().fg(Color::White));
+            .style(Style::default().fg(ColorScheme::WHITE_TEXT));
 
         let paragraph = Paragraph::new(milestone_lines)
             .block(milestones_block)
@@ -245,7 +259,7 @@ impl InteractiveTimer {
             Line::from(Span::styled(
                 "Controls:",
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(ColorScheme::CLEAN_ACCENT)
                     .add_modifier(Modifier::BOLD),
             )),
             Line::from(Span::raw("Space - Start/Pause timer")),
@@ -255,10 +269,9 @@ impl InteractiveTimer {
             Line::from(Span::raw("Q/Esc - Quit")),
         ];
 
-        let controls_block = Block::default()
-            .borders(Borders::ALL)
+        let controls_block = ColorScheme::clean_block()
             .title("Controls")
-            .style(Style::default().fg(Color::White));
+            .style(Style::default().fg(ColorScheme::WHITE_TEXT));
 
         let paragraph = Paragraph::new(controls_text)
             .block(controls_block)
@@ -269,6 +282,9 @@ impl InteractiveTimer {
     async fn update_timer_state(&mut self) -> Result<()> {
         // This would sync with the actual session state from the daemon
         // For now, we'll keep local state
+        if self.start_time.is_some() && self.paused_at.is_none() {
+            self.throbber.next();
+        }
         Ok(())
     }
 

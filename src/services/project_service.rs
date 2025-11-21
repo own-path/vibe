@@ -217,7 +217,7 @@ impl ProjectService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{TestContext, with_test_db_async};
+    use crate::test_utils::with_test_db;
     use tempfile::tempdir;
     use std::fs;
 

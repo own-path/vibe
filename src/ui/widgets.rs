@@ -24,6 +24,14 @@ impl ColorScheme {
     pub const GRAY_TEXT: Color = Color::Rgb(160, 160, 160);
     pub const WHITE_TEXT: Color = Color::Rgb(240, 240, 240);
 
+    // Professional clean palette
+    pub const CLEAN_BG: Color = Color::Rgb(20, 20, 20);
+    pub const CLEAN_ACCENT: Color = Color::Rgb(217, 119, 87); // Terracotta-ish
+    pub const CLEAN_BLUE: Color = Color::Rgb(100, 150, 255);
+    pub const CLEAN_GREEN: Color = Color::Rgb(100, 200, 100);
+    pub const CLEAN_GOLD: Color = Color::Rgb(217, 179, 87);
+    pub const CLEAN_MAGENTA: Color = Color::Rgb(188, 19, 254);
+
     pub fn get_context_color(context: &str) -> Color {
         match context {
             "terminal" => Self::NEON_CYAN,
@@ -63,6 +71,12 @@ impl ColorScheme {
             .border_type(BorderType::Rounded)
             .style(Style::default().bg(Self::DARK_BG))
     }
+
+    pub fn clean_block() -> Block<'static> {
+        Block::default()
+            .borders(Borders::NONE)
+            .style(Style::default().bg(Self::DARK_BG))
+    }
 }
 
 pub struct Spinner {
@@ -73,7 +87,36 @@ pub struct Spinner {
 impl Spinner {
     pub fn new() -> Self {
         Self {
-            frames: vec!["-", "\\", "|", "/"],
+            // Using a simple line spinner that is ASCII safe but looks good
+            frames: vec!["|", "/", "-", "\\"],
+            current: 0,
+        }
+    }
+
+    pub fn next(&mut self) -> &'static str {
+        let frame = self.frames[self.current];
+        self.current = (self.current + 1) % self.frames.len();
+        frame
+    }
+
+    pub fn current(&self) -> &'static str {
+        self.frames[self.current]
+    }
+}
+
+pub struct Throbber {
+    frames: Vec<&'static str>,
+    current: usize,
+}
+
+impl Throbber {
+    pub fn new() -> Self {
+        Self {
+            // A horizontal throbber using ASCII
+            frames: vec![
+                "[=    ]", "[ =   ]", "[  =  ]", "[   = ]", "[    =]", "[   = ]", "[  =  ]",
+                "[ =   ]",
+            ],
             current: 0,
         }
     }
@@ -97,7 +140,7 @@ impl StatusWidget {
         context: &str,
     ) -> String {
         format!(
-            "* ACTIVE | {} | Time: {} | Started: {} | Context: {}",
+            "ACTIVE | {} | Time: {} | Started: {} | Context: {}",
             project_name,
             Formatter::format_duration(duration),
             start_time,
@@ -106,7 +149,7 @@ impl StatusWidget {
     }
 
     pub fn render_idle_text() -> String {
-        "- IDLE | No active time tracking session | Use 'tempo session start' to begin tracking"
+        "IDLE | No active time tracking session | Use 'tempo session start' to begin tracking"
             .to_string()
     }
 }
