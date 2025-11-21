@@ -2,10 +2,10 @@
 
 > **Simple, Fast, and Privacy-Focused Time Tracking for Developers**
 
-[![PyPI](https://img.shields.io/pypi/v/tempo-cli?style=flat-square&color=blue)](https://pypi.org/project/tempo-cli/)
+[![PyPI](https://img.shields.io/pypi/v/tempo-tracker-cli?style=flat-square&color=blue)](https://pypi.org/project/tempo-tracker-cli/)
 [![Crates.io](https://img.shields.io/crates/v/tempo-cli.svg?style=flat-square&color=orange)](https://crates.io/crates/tempo-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![Downloads](https://img.shields.io/pypi/dm/tempo-cli?style=flat-square)](https://pypi.org/project/tempo-cli/)
+[![Downloads](https://img.shields.io/pypi/dm/tempo-tracker-cli?style=flat-square)](https://pypi.org/project/tempo-tracker-cli/)
 
 Tempo is a lightweight, terminal-based time tracking tool designed specifically for developers. It automatically detects your project context, tracks time with precision, and stores everything locally. No cloud services, no subscriptions, just a fast binary that gets out of your way.
 
@@ -90,33 +90,41 @@ graph LR
 
 ## 📥 Installation
 
-### Option 1: Python / UV (Recommended)
-The easiest way to install Tempo is via `uv` or `pip`. This ensures you get the latest version with minimal fuss.
+### Option 1: Python Package (Recommended)
+The easiest way to install Tempo is via `pip` or `uv`. The Python package automatically installs the Rust binary for your platform.
 
 ```bash
 # Fast installation with uv
-uv install tempo-cli
+uv add tempo-tracker-cli
 
 # Or using standard pip
-pip install tempo-cli
+pip install tempo-tracker-cli
 ```
 
-### Option 2: Rust / Cargo
-If you have a Rust toolchain installed, you can build from source or install from crates.io.
+### Option 2: Rust / Cargo  
+If you have a Rust toolchain installed, you can install directly from crates.io or build from source.
 
 ```bash
 # Install from crates.io
 cargo install tempo-cli
 
-# Build from source
+# Or build from source
 git clone https://github.com/own-path/vibe.git
 cd vibe
-./install.sh
+cargo build --release
+cargo install --path .
 ```
 
+### Package Information
+Tempo is distributed as two packages:
+- **Python Package**: [`tempo-tracker-cli`](https://pypi.org/project/tempo-tracker-cli/) - Provides easy installation and automatically manages the Rust binary
+- **Rust Package**: [`tempo-cli`](https://crates.io/crates/tempo-cli/) - The core application binary
+
+Both packages install the same `tempo` command-line tool. Choose Python for convenience or Rust for building from source.
+
 ### System Requirements
-- **OS**: macOS, Linux, or Windows (WSL recommended).
-- **Terminal**: A terminal with TrueColor support (e.g., iTerm2, Alacritty, Ghostty) and a [Nerd Font](https://www.nerdfonts.com/) installed is recommended for the best TUI experience.
+- **OS**: macOS, Linux, or Windows (WSL recommended)
+- **Terminal**: A terminal with TrueColor support (e.g., iTerm2, Alacritty, Ghostty) and a [Nerd Font](https://www.nerdfonts.com/) installed is recommended for the best TUI experience
 
 ---
 
@@ -262,9 +270,10 @@ We welcome contributions! Whether it's bug reports, feature requests, or code, y
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ### Release Process
-Releases are automated via [release-plz](https://github.com/MarcoIeni/release-plz).
-- **PRs**: Automated PRs are created for version bumps.
-- **Publishing**: Merging to `main` triggers publication to Crates.io and PyPI.
+Releases are fully automated via [release-plz](https://github.com/MarcoIeni/release-plz):
+- **Version Management**: Automated PRs are created for version bumps based on conventional commits
+- **Dual Publishing**: Merging to `main` triggers simultaneous publication to both [crates.io](https://crates.io/crates/tempo-cli) and [PyPI](https://pypi.org/project/tempo-tracker-cli/)
+- **Synchronized Versions**: Both packages maintain version parity automatically
 
 ---
 
