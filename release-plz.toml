@@ -1,5 +1,5 @@
 [workspace]
-# Automatically bump version and create releases
+# Skip PR creation and release directly
 pr_draft = false
 pr_labels = ["release"]
 git_release_enable = true
@@ -12,3 +12,5 @@ name = "tempo-cli"
 semver_check = false
 # Always bump patch version for any commit to main
 release = true
+# Skip PR creation - release directly
+pr = false
