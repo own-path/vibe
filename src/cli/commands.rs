@@ -1717,12 +1717,24 @@ async fn bulk_delete_sessions(session_ids: Vec<i64>) -> Result<()> {
 }
 
 async fn launch_dashboard() -> Result<()> {
-    // Setup terminal
-    enable_raw_mode()?;
+    // Check if we have a TTY first
+    if !is_tty() {
+        return show_dashboard_fallback().await;
+    }
+
+    // Setup terminal with better error handling
+    enable_raw_mode().context("Failed to enable raw mode - terminal may not support interactive features")?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    
+    execute!(stdout, EnterAlternateScreen)
+        .context("Failed to enter alternate screen - terminal may not support full-screen mode")?;
+    
     let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    let mut terminal = Terminal::new(backend)
+        .context("Failed to initialize terminal backend")?;
+
+    // Clear the screen first
+    terminal.clear().context("Failed to clear terminal")?;
 
     // Create dashboard instance and run it
     let result = async {
@@ -1732,21 +1744,145 @@ async fn launch_dashboard() -> Result<()> {
 
     let result = tokio::task::block_in_place(|| Handle::current().block_on(result));
 
-    // Restore terminal
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
+    // Always restore terminal, even if there was an error
+    let cleanup_result = cleanup_terminal(&mut terminal);
+    
+    // Return the original result, but log cleanup errors
+    if let Err(e) = cleanup_result {
+        eprintln!("Warning: Failed to restore terminal: {}", e);
+    }
 
     result
 }
 
+fn is_tty() -> bool {
+    use std::os::unix::io::AsRawFd;
+    unsafe { libc::isatty(std::io::stdin().as_raw_fd()) == 1 }
+}
+
+async fn show_dashboard_fallback() -> Result<()> {
+    println!("📊 Tempo Dashboard (Text Mode)");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!();
+    
+    // Get basic status information
+    if is_daemon_running() {
+        println!("🟢 Daemon Status: Running");
+    } else {
+        println!("🔴 Daemon Status: Offline");
+        println!("   Start with: tempo start");
+        println!();
+        return Ok(());
+    }
+
+    // Show current session info
+    let socket_path = get_socket_path()?;
+    if let Ok(mut client) = IpcClient::connect(&socket_path).await {
+        match client.send_message(&IpcMessage::GetActiveSession).await {
+            Ok(IpcResponse::ActiveSession(Some(session))) => {
+                println!("⏱️  Active Session:");
+                println!("   Started: {}", session.start_time.format("%H:%M:%S"));
+                println!("   Duration: {}", format_duration_simple((chrono::Utc::now().timestamp() - session.start_time.timestamp()) - session.paused_duration.num_seconds()));
+                println!("   Context: {}", session.context);
+                println!();
+                
+                // Get project info
+                match client.send_message(&IpcMessage::GetProject(session.project_id)).await {
+                    Ok(IpcResponse::Project(Some(project))) => {
+                        println!("📁 Current Project: {}", project.name);
+                        println!("   Path: {}", project.path.display());
+                        println!();
+                    }
+                    _ => {
+                        println!("📁 Project: Unknown");
+                        println!();
+                    }
+                }
+            }
+            _ => {
+                println!("⏸️  No active session");
+                println!("   Start tracking with: tempo session start");
+                println!();
+            }
+        }
+
+        // Get daily stats
+        let today = chrono::Local::now().date_naive();
+        match client.send_message(&IpcMessage::GetDailyStats(today)).await {
+            Ok(IpcResponse::DailyStats { sessions_count, total_seconds, avg_seconds }) => {
+                println!("📈 Today's Summary:");
+                println!("   Sessions: {}", sessions_count);
+                println!("   Total time: {}", format_duration_simple(total_seconds));
+                if sessions_count > 0 {
+                    println!("   Average session: {}", format_duration_simple(avg_seconds));
+                }
+                let progress = (total_seconds as f64 / (8.0 * 3600.0)) * 100.0;
+                println!("   Daily goal (8h): {:.1}%", progress);
+                println!();
+            }
+            _ => {
+                println!("📈 Today's Summary: No data available");
+                println!();
+            }
+        }
+    } else {
+        println!("❌ Unable to connect to daemon");
+        println!("   Try: tempo restart");
+        println!();
+    }
+
+    println!("💡 For interactive dashboard, run in a terminal:");
+    println!("   • Terminal.app, iTerm2, or other terminal emulators");
+    println!("   • SSH sessions with TTY allocation (ssh -t)");
+    println!("   • Interactive shell environments");
+    
+    Ok(())
+}
+
+fn format_duration_simple(seconds: i64) -> String {
+    let hours = seconds / 3600;
+    let minutes = (seconds % 3600) / 60;
+    let secs = seconds % 60;
+    
+    if hours > 0 {
+        format!("{}h {}m {}s", hours, minutes, secs)
+    } else if minutes > 0 {
+        format!("{}m {}s", minutes, secs)
+    } else {
+        format!("{}s", secs)
+    }
+}
+
+fn cleanup_terminal<B>(terminal: &mut Terminal<B>) -> Result<()> 
+where 
+    B: ratatui::backend::Backend + std::io::Write,
+{
+    // Restore terminal
+    disable_raw_mode().context("Failed to disable raw mode")?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)
+        .context("Failed to leave alternate screen")?;
+    terminal.show_cursor().context("Failed to show cursor")?;
+    Ok(())
+}
+
 async fn launch_timer() -> Result<()> {
-    // Setup terminal
-    enable_raw_mode()?;
+    // Check if we have a TTY first
+    if !is_tty() {
+        return Err(anyhow::anyhow!(
+            "Interactive timer requires an interactive terminal (TTY).\n\
+            \n\
+            This command needs to run in a proper terminal environment.\n\
+            Try running this command directly in your terminal application."
+        ));
+    }
+
+    // Setup terminal with better error handling
+    enable_raw_mode().context("Failed to enable raw mode")?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen).context("Failed to enter alternate screen")?;
     let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    let mut terminal = Terminal::new(backend).context("Failed to initialize terminal")?;
+    terminal.clear().context("Failed to clear terminal")?;
 
     // Create timer instance and run it
     let result = async {
@@ -1756,10 +1892,11 @@ async fn launch_timer() -> Result<()> {
 
     let result = tokio::task::block_in_place(|| Handle::current().block_on(result));
 
-    // Restore terminal
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
+    // Always restore terminal
+    let cleanup_result = cleanup_terminal(&mut terminal);
+    if let Err(e) = cleanup_result {
+        eprintln!("Warning: Failed to restore terminal: {}", e);
+    }
 
     result
 }
@@ -1918,11 +2055,23 @@ async fn split_session(
 }
 
 async fn launch_history() -> Result<()> {
-    enable_raw_mode()?;
+    // Check if we have a TTY first
+    if !is_tty() {
+        return Err(anyhow::anyhow!(
+            "Session history browser requires an interactive terminal (TTY).\n\
+            \n\
+            This command needs to run in a proper terminal environment.\n\
+            Try running this command directly in your terminal application."
+        ));
+    }
+
+    // Setup terminal with better error handling
+    enable_raw_mode().context("Failed to enable raw mode")?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen).context("Failed to enter alternate screen")?;
     let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    let mut terminal = Terminal::new(backend).context("Failed to initialize terminal")?;
+    terminal.clear().context("Failed to clear terminal")?;
 
     let result = async {
         let mut browser = SessionHistoryBrowser::new().await?;
@@ -1931,9 +2080,11 @@ async fn launch_history() -> Result<()> {
 
     let result = tokio::task::block_in_place(|| Handle::current().block_on(result));
 
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
+    // Always restore terminal
+    let cleanup_result = cleanup_terminal(&mut terminal);
+    if let Err(e) = cleanup_result {
+        eprintln!("Warning: Failed to restore terminal: {}", e);
+    }
 
     result
 }

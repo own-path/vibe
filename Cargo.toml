@@ -1,6 +1,6 @@
 [package]
 name = "tempo-cli"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2021"
 authors = ["Own Path <brandy.daryl@gmail.com>"]
 description = "Automatic project time tracking CLI tool with beautiful terminal interface"
@@ -63,6 +63,9 @@ thiserror = "1.0"
 # Cross-platform utilities
 dirs = "5.0"
 uuid = { version = "1.0", features = ["v4"] }
+
+# System interface
+libc = "0.2"
 
 # Terminal UI
 ratatui = "0.24"
