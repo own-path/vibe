@@ -72,5 +72,5 @@ jobs:
       - name: Verify PyPI publication
         run: |
           echo "Package published successfully!"
-          echo "Install with: pip install tempo-cli"
-          echo "PyPI package: https://pypi.org/project/tempo-cli/"
+          echo "Install with: pip install tempo-tracker-cli"
+          echo "PyPI package: https://pypi.org/project/tempo-tracker-cli/"

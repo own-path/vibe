@@ -60,7 +60,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="tempo-cli",
+    name="tempo-tracker-cli",
     version="0.2.4",
     author="Own Path",
     author_email="brandy.daryl@gmail.com",
@@ -72,7 +72,7 @@ setup(
         "Bug Tracker": "https://github.com/own-path/vibe/issues",
         "Documentation": "https://docs.rs/tempo",
         "Source Code": "https://github.com/own-path/vibe",
-        "PyPI": "https://pypi.org/project/tempo-cli/",
+        "PyPI": "https://pypi.org/project/tempo-tracker-cli/",
     },
     classifiers=[
         "Development Status :: 5 - Production/Stable",
