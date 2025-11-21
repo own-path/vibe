@@ -1,4 +1,4 @@
-# Tempo ⏱️
+# Tempo
 
 **Simple, Fast Project Time Tracking for Developers**
 
@@ -60,19 +60,19 @@ For the best experience with the TUI dashboard, we recommend using a terminal th
 
 ## Core Features
 
-### ⚡ Time Tracking
+### Time Tracking
 - **Automatic Project Detection** - Recognizes Git repositories, package.json, Cargo.toml files
 - **Session Management** - Start, stop, pause, and resume tracking sessions
 - **Background Daemon** - Lightweight service runs automatically in background
 - **Multi-Project Support** - Track multiple projects without switching configurations
 
-### 📊 Project Management  
+### Project Management
 - **Project Organization** - Initialize and manage project tracking
 - **Session History** - Browse and edit past tracking sessions
 - **Time Reports** - Generate reports with CSV/JSON export
 - **Project Archiving** - Archive completed projects while preserving data
 
-### 🎨 User Interface
+### User Interface
 - **Interactive Dashboard** - Real-time tracking status and project overview
 - **Terminal UI** - Browse projects and sessions with keyboard navigation
 - **Timer Interface** - Visual timer with progress tracking
@@ -177,7 +177,7 @@ log_level = "info"
 
 Available settings:
 - `idle_timeout_minutes` - Auto-pause after inactivity (default: 15)
-- `auto_pause_enabled` - Enable automatic pausing (default: true)  
+- `auto_pause_enabled` - Enable automatic pausing (default: true)
 - `default_context` - Default tracking context (default: "terminal")
 - `log_level` - Logging verbosity: error, warn, info, debug (default: "info")
 
@@ -209,7 +209,7 @@ Tempo automatically detects projects by scanning for:
 
 - **Git repositories** (`.git/` directory)
 - **Node.js projects** (`package.json`)
-- **Rust projects** (`Cargo.toml`) 
+- **Rust projects** (`Cargo.toml`)
 - **Python projects** (`pyproject.toml`, `setup.py`, `requirements.txt`)
 - **Go projects** (`go.mod`)
 - **Java projects** (`pom.xml`, `build.gradle`)
@@ -248,6 +248,12 @@ cargo run -- status
 3. Add tests for new functionality
 4. Submit a pull request with clear description
 
+### Release Process
+
+Releases are automated using [release-plz](https://github.com/MarcoIeni/release-plz).
+- **Automated PRs**: `release-plz` creates a PR with version bumps and changelog updates when changes are detected.
+- **Publishing**: When the release PR is merged to `main`, a new release is automatically published to Crates.io and PyPI.
+
 ---
 
 ## License
@@ -268,6 +274,6 @@ Free to use in personal and commercial projects.
 
 **Built for developers who value simplicity and accuracy in time tracking.**
 
-⭐ Star the project if it helps you track time effectively!
+Star the project if it helps you track time effectively!
 
-🚀 Get started: `uv install tempo-cli`
+Get started: `uv install tempo-cli`

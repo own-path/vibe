@@ -1,10 +1,10 @@
-use chrono::{DateTime, Local, Duration};
+use crate::models::{Project, Session};
+use chrono::{DateTime, Duration, Local};
 use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders},
 };
-use crate::models::{Project, Session};
 
 pub struct Formatter;
 
@@ -50,11 +50,15 @@ impl Formatter {
     }
 
     pub fn create_success_style() -> Style {
-        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn create_warning_style() -> Style {
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn create_error_style() -> Style {
@@ -62,7 +66,9 @@ impl Formatter {
     }
 
     pub fn create_highlight_style() -> Style {
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn format_session_status(session: &Session) -> Text {
@@ -87,25 +93,35 @@ impl Formatter {
             Self::format_duration(active_duration.num_seconds())
         } else {
             let current_active = session.current_active_duration();
-            format!("{} (ongoing)", Self::format_duration(current_active.num_seconds()))
+            format!(
+                "{} (ongoing)",
+                Self::format_duration(current_active.num_seconds())
+            )
         };
 
         Text::from(vec![
-            Line::from(vec![
-                Span::raw("Status: "),
-                status,
-            ]),
+            Line::from(vec![Span::raw("Status: "), status]),
             Line::from(vec![
                 Span::raw("Started: "),
                 Span::styled(start_time, Style::default().fg(Color::Gray)),
             ]),
             Line::from(vec![
                 Span::raw("Duration: "),
-                Span::styled(duration, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    duration,
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                ),
             ]),
             Line::from(vec![
                 Span::raw("Context: "),
-                Span::styled(session.context.to_string(), Style::default().fg(context_color).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    session.context.to_string(),
+                    Style::default()
+                        .fg(context_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
             ]),
         ])
     }
@@ -114,11 +130,19 @@ impl Formatter {
         Text::from(vec![
             Line::from(vec![
                 Span::raw("Name: "),
-                Span::styled(project.name.clone(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    project.name.clone(),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
             ]),
             Line::from(vec![
                 Span::raw("Path: "),
-                Span::styled(project.path.to_string_lossy().to_string(), Style::default().fg(Color::Gray)),
+                Span::styled(
+                    project.path.to_string_lossy().to_string(),
+                    Style::default().fg(Color::Gray),
+                ),
             ]),
             if let Some(description) = &project.description {
                 Line::from(vec![
@@ -130,7 +154,10 @@ impl Formatter {
             },
             Line::from(vec![
                 Span::raw("Created: "),
-                Span::styled(Self::format_timestamp(&project.created_at.with_timezone(&Local)), Style::default().fg(Color::Gray)),
+                Span::styled(
+                    Self::format_timestamp(&project.created_at.with_timezone(&Local)),
+                    Style::default().fg(Color::Gray),
+                ),
             ]),
         ])
     }
@@ -142,18 +169,21 @@ impl Formatter {
 
         let mut result = String::new();
         result.push_str("Sessions:\n");
-        
+
         for session in sessions.iter().take(5) {
             let duration = if let Some(_end_time) = &session.end_time {
                 let active_duration = session.active_duration().unwrap_or_default();
                 Self::format_duration(active_duration.num_seconds())
             } else {
                 let current_active = session.current_active_duration();
-                format!("{} (active)", Self::format_duration(current_active.num_seconds()))
+                format!(
+                    "{} (active)",
+                    Self::format_duration(current_active.num_seconds())
+                )
             };
 
-            let status = if session.end_time.is_some() { "✓" } else { "●" };
-            
+            let status = if session.end_time.is_some() { "+" } else { "*" };
+
             result.push_str(&format!(
                 "  {} {} | {} | {} | {}\n",
                 status,

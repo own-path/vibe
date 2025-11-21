@@ -34,7 +34,7 @@ impl InteractiveViewer {
             selected_project: None,
             project_list_state: ListState::default(),
         };
-        
+
         viewer.load_data()?;
         Ok(viewer)
     }
@@ -80,7 +80,9 @@ impl InteractiveViewer {
             .enumerate()
             .map(|(i, project)| {
                 let style = if Some(i) == self.selected_project {
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(Color::White)
                 };
@@ -123,9 +125,11 @@ impl InteractiveViewer {
                     .collect();
 
                 if !project_sessions.is_empty() {
-                    let sessions_summary = Formatter::format_sessions_summary(&project_sessions.into_iter().cloned().collect::<Vec<_>>());
-                    let sessions_widget = Paragraph::new(sessions_summary)
-                        .block(Formatter::create_info_block());
+                    let sessions_summary = Formatter::format_sessions_summary(
+                        &project_sessions.into_iter().cloned().collect::<Vec<_>>(),
+                    );
+                    let sessions_widget =
+                        Paragraph::new(sessions_summary).block(Formatter::create_info_block());
                     f.render_widget(sessions_widget, chunks[1]);
                 } else {
                     let no_sessions = Paragraph::new("No sessions found for this project")
@@ -139,19 +143,18 @@ impl InteractiveViewer {
                 Line::from("Select a project to view details"),
                 Line::from(""),
                 Line::from("Controls:"),
-                Line::from("  ↑/↓  Navigate projects"),
+                Line::from("  Up/Down  Navigate projects"),
                 Line::from("  Enter  Select project"),
                 Line::from("  r      Refresh data"),
                 Line::from("  q/Esc  Quit"),
             ];
 
-            let paragraph = Paragraph::new(help_text)
-                .block(
-                    Block::default()
-                        .title("Help")
-                        .borders(Borders::ALL)
-                        .style(Style::default().fg(Color::Cyan)),
-                );
+            let paragraph = Paragraph::new(help_text).block(
+                Block::default()
+                    .title("Help")
+                    .borders(Borders::ALL)
+                    .style(Style::default().fg(Color::Cyan)),
+            );
             f.render_widget(paragraph, area);
         }
     }
@@ -205,34 +208,30 @@ impl InteractiveViewer {
         // For now, create placeholder data
         use chrono::Utc;
         use std::path::PathBuf;
-        
-        self.projects = vec![
-            Project {
-                id: Some(1),
-                name: "Sample Project".to_string(),
-                path: PathBuf::from("/Users/example/sample"),
-                git_hash: Some("abc123".to_string()),
-                created_at: chrono::Local::now().with_timezone(&Utc),
-                updated_at: chrono::Local::now().with_timezone(&Utc),
-                is_archived: false,
-                description: Some("A sample project for demo".to_string()),
-            },
-        ];
+
+        self.projects = vec![Project {
+            id: Some(1),
+            name: "Sample Project".to_string(),
+            path: PathBuf::from("/Users/example/sample"),
+            git_hash: Some("abc123".to_string()),
+            created_at: chrono::Local::now().with_timezone(&Utc),
+            updated_at: chrono::Local::now().with_timezone(&Utc),
+            is_archived: false,
+            description: Some("A sample project for demo".to_string()),
+        }];
 
         use crate::models::session::SessionContext;
-        
-        self.sessions = vec![
-            Session {
-                id: Some(1),
-                project_id: 1,
-                start_time: (chrono::Local::now() - chrono::Duration::hours(2)).with_timezone(&Utc),
-                end_time: Some((chrono::Local::now() - chrono::Duration::hours(1)).with_timezone(&Utc)),
-                context: SessionContext::Terminal,
-                paused_duration: chrono::Duration::minutes(5),
-                notes: Some("Working on initial setup".to_string()),
-                created_at: chrono::Local::now().with_timezone(&Utc),
-            },
-        ];
+
+        self.sessions = vec![Session {
+            id: Some(1),
+            project_id: 1,
+            start_time: (chrono::Local::now() - chrono::Duration::hours(2)).with_timezone(&Utc),
+            end_time: Some((chrono::Local::now() - chrono::Duration::hours(1)).with_timezone(&Utc)),
+            context: SessionContext::Terminal,
+            paused_duration: chrono::Duration::minutes(5),
+            notes: Some("Working on initial setup".to_string()),
+            created_at: chrono::Local::now().with_timezone(&Utc),
+        }];
 
         Ok(())
     }

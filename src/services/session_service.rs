@@ -1,5 +1,5 @@
 use anyhow::{Result, Context};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 
 use crate::db::{Database, get_database_path};
 use crate::db::queries::SessionQueries;
@@ -8,9 +8,6 @@ use crate::utils::ipc::{IpcClient, IpcMessage, IpcResponse, get_socket_path, is_
 use crate::utils::validation::{
     validate_project_id, validate_date_range, validate_query_limit
 };
-
-#[cfg(test)]
-use crate::test_utils::{TestContext, with_test_db_async};
 
 /// Service layer for session-related business logic
 pub struct SessionService;
@@ -256,10 +253,10 @@ pub struct SessionStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{TestContext, with_test_db_async};
+    use crate::test_utils::with_test_db_async;
     use crate::db::queries::ProjectQueries;
     use crate::models::Project;
-    use std::path::PathBuf;
+    // use std::path::PathBuf;
 
     #[tokio::test]
     async fn test_session_stats_calculation() {
@@ -314,7 +311,7 @@ mod tests {
             
             let project2_path = ctx.create_temp_git_repo()?;
             let project2 = Project::new("Project 2".to_string(), project2_path);
-            let project2_id = ProjectQueries::create(&ctx.connection(), &project2)?;
+            let _project2_id = ProjectQueries::create(&ctx.connection(), &project2)?;
             
             // Test recent sessions without project filter
             let all_recent = SessionService::list_recent_sessions(Some(10), None).await?;

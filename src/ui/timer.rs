@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Duration, Utc};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     backend::Backend,
@@ -11,10 +11,7 @@ use ratatui::{
 };
 use std::time::Duration as StdDuration;
 
-use crate::{
-    utils::ipc::IpcClient,
-    ui::formatter::Formatter,
-};
+use crate::{ui::formatter::Formatter, utils::ipc::IpcClient};
 
 pub struct InteractiveTimer {
     client: IpcClient,
@@ -59,16 +56,14 @@ impl InteractiveTimer {
             // Handle input
             if event::poll(StdDuration::from_millis(100))? {
                 match event::read()? {
-                    Event::Key(key) if key.kind == KeyEventKind::Press => {
-                        match key.code {
-                            KeyCode::Char('q') | KeyCode::Esc => break,
-                            KeyCode::Char(' ') => self.toggle_timer().await?,
-                            KeyCode::Char('r') => self.reset_timer().await?,
-                            KeyCode::Char('s') => self.set_target().await?,
-                            KeyCode::Char('m') => self.show_milestones = !self.show_milestones,
-                            _ => {}
-                        }
-                    }
+                    Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+                        KeyCode::Char('q') | KeyCode::Esc => break,
+                        KeyCode::Char(' ') => self.toggle_timer().await?,
+                        KeyCode::Char('r') => self.reset_timer().await?,
+                        KeyCode::Char('s') => self.set_target().await?,
+                        KeyCode::Char('m') => self.show_milestones = !self.show_milestones,
+                        _ => {}
+                    },
                     _ => {}
                 }
             }
@@ -81,32 +76,36 @@ impl InteractiveTimer {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3),  // Title
-                Constraint::Length(8),  // Timer display
-                Constraint::Length(6),  // Progress bar
-                Constraint::Length(6),  // Milestones
-                Constraint::Min(0),     // Controls
+                Constraint::Length(3), // Title
+                Constraint::Length(8), // Timer display
+                Constraint::Length(6), // Progress bar
+                Constraint::Length(6), // Milestones
+                Constraint::Min(0),    // Controls
             ])
             .split(f.size());
 
         // Title
-        let title = Paragraph::new("🕐 Interactive Timer")
-            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+        let title = Paragraph::new("Interactive Timer")
+            .style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
             .alignment(Alignment::Center)
             .block(Block::default().borders(Borders::ALL));
         f.render_widget(title, chunks[0]);
 
         // Timer display
         self.render_timer_display(f, chunks[1]);
-        
+
         // Progress bar
         self.render_progress_bar(f, chunks[2]);
-        
+
         // Milestones
         if self.show_milestones {
             self.render_milestones(f, chunks[3]);
         }
-        
+
         // Controls
         self.render_controls(f, chunks[4]);
     }
@@ -114,26 +113,45 @@ impl InteractiveTimer {
     fn render_timer_display(&self, f: &mut Frame, area: Rect) {
         let elapsed = self.get_elapsed_time();
         let is_running = self.start_time.is_some() && self.paused_at.is_none();
-        
+
         let time_display = Formatter::format_duration(elapsed);
-        let status = if is_running { "🟢 RUNNING" } else if self.start_time.is_some() { "⏸️ PAUSED" } else { "⏹️ STOPPED" };
-        let status_color = if is_running { Color::Green } else if self.start_time.is_some() { Color::Yellow } else { Color::Red };
+        let status = if is_running {
+            "RUNNING"
+        } else if self.start_time.is_some() {
+            "PAUSED"
+        } else {
+            "STOPPED"
+        };
+        let status_color = if is_running {
+            Color::Green
+        } else if self.start_time.is_some() {
+            Color::Yellow
+        } else {
+            Color::Red
+        };
 
         let timer_text = vec![
             Line::from(Span::styled(
                 time_display,
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             )),
             Line::from(Span::raw("")),
             Line::from(vec![
                 Span::raw("Status: "),
-                Span::styled(status, Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    status,
+                    Style::default()
+                        .fg(status_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
             ]),
             Line::from(vec![
                 Span::raw("Target: "),
                 Span::styled(
                     Formatter::format_duration(self.target_duration),
-                    Style::default().fg(Color::White)
+                    Style::default().fg(Color::White),
                 ),
             ]),
         ];
@@ -158,23 +176,30 @@ impl InteractiveTimer {
             0.0
         };
 
-        let progress_color = if progress >= 100.0 { Color::Green }
-                            else if progress >= 75.0 { Color::Yellow }
-                            else { Color::Cyan };
+        let progress_color = if progress >= 100.0 {
+            Color::Green
+        } else if progress >= 75.0 {
+            Color::Yellow
+        } else {
+            Color::Cyan
+        };
 
         let progress_bar = Gauge::default()
-            .block(Block::default()
-                .borders(Borders::ALL)
-                .title("Progress to Target")
-                .style(Style::default().fg(Color::White)))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Progress to Target")
+                    .style(Style::default().fg(Color::White)),
+            )
             .gauge_style(Style::default().fg(progress_color))
             .percent(progress as u16)
-            .label(format!("{:.1}% ({}/{})", 
-                progress, 
+            .label(format!(
+                "{:.1}% ({}/{})",
+                progress,
                 Formatter::format_duration(elapsed),
                 Formatter::format_duration(self.target_duration)
             ));
-        
+
         f.render_widget(progress_bar, area);
     }
 
@@ -191,16 +216,17 @@ impl InteractiveTimer {
         let mut milestone_lines = vec![];
         for (duration, name) in milestones {
             let achieved = elapsed >= duration;
-            let icon = if achieved { "✅" } else { "⭕" };
-            let style = if achieved { 
-                Style::default().fg(Color::Green) 
-            } else { 
-                Style::default().fg(Color::Gray) 
+            let icon = if achieved { "[x]" } else { "[ ]" };
+            let style = if achieved {
+                Style::default().fg(Color::Green)
+            } else {
+                Style::default().fg(Color::Gray)
             };
-            
-            milestone_lines.push(Line::from(vec![
-                Span::styled(format!("{} {}", icon, name), style),
-            ]));
+
+            milestone_lines.push(Line::from(vec![Span::styled(
+                format!("{} {}", icon, name),
+                style,
+            )]));
         }
 
         let milestones_block = Block::default()
@@ -216,7 +242,12 @@ impl InteractiveTimer {
 
     fn render_controls(&self, f: &mut Frame, area: Rect) {
         let controls_text = vec![
-            Line::from(Span::styled("Controls:", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))),
+            Line::from(Span::styled(
+                "Controls:",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )),
             Line::from(Span::raw("Space - Start/Pause timer")),
             Line::from(Span::raw("R - Reset timer")),
             Line::from(Span::raw("S - Set target duration")),
@@ -270,12 +301,12 @@ impl InteractiveTimer {
         // In a full implementation, this would show an input dialog
         // For now, cycle through common durations
         self.target_duration = match self.target_duration {
-            1500 => 1800,      // 25min -> 30min
-            1800 => 2700,      // 30min -> 45min
-            2700 => 3600,      // 45min -> 1hour
-            3600 => 5400,      // 1hour -> 1.5hour
-            5400 => 7200,      // 1.5hour -> 2hour
-            _ => 1500,         // Default back to 25min (Pomodoro)
+            1500 => 1800, // 25min -> 30min
+            1800 => 2700, // 30min -> 45min
+            2700 => 3600, // 45min -> 1hour
+            3600 => 5400, // 1hour -> 1.5hour
+            5400 => 7200, // 1.5hour -> 2hour
+            _ => 1500,    // Default back to 25min (Pomodoro)
         };
         Ok(())
     }
@@ -287,7 +318,7 @@ impl InteractiveTimer {
             } else {
                 Utc::now()
             };
-            
+
             (end_time - start - self.total_paused).num_seconds().max(0)
         } else {
             0

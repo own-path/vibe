@@ -6,7 +6,6 @@ use ratatui::{
 
 use crate::ui::formatter::Formatter;
 
-
 pub struct StatusWidget;
 pub struct ProgressWidget;
 pub struct SummaryWidget;
@@ -74,7 +73,7 @@ pub struct Spinner {
 impl Spinner {
     pub fn new() -> Self {
         Self {
-            frames: vec!["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+            frames: vec!["-", "\\", "|", "/"],
             current: 0,
         }
     }
@@ -98,7 +97,7 @@ impl StatusWidget {
         context: &str,
     ) -> String {
         format!(
-            "● ACTIVE | {} | Time: {} | Started: {} | Context: {}",
+            "* ACTIVE | {} | Time: {} | Started: {} | Context: {}",
             project_name,
             Formatter::format_duration(duration),
             start_time,
@@ -107,7 +106,7 @@ impl StatusWidget {
     }
 
     pub fn render_idle_text() -> String {
-        "○ IDLE | No active time tracking session | Use 'tempo session start' to begin tracking"
+        "- IDLE | No active time tracking session | Use 'tempo session start' to begin tracking"
             .to_string()
     }
 }
@@ -151,7 +150,7 @@ impl SummaryWidget {
         context: &str,
         is_active: bool,
     ) -> String {
-        let status_char = if is_active { "●" } else { "✓" };
+        let status_char = if is_active { "*" } else { "+" };
         let duration_str = if is_active {
             format!("{} (active)", Formatter::format_duration(duration))
         } else {

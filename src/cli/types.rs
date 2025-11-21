@@ -187,6 +187,18 @@ pub enum Commands {
         action: ClientAction,
     },
 
+    #[command(about = "Update tempo to the latest version")]
+    Update {
+        #[arg(long, help = "Check for updates without installing")]
+        check: bool,
+        
+        #[arg(long, help = "Force update even if current version is latest")]
+        force: bool,
+        
+        #[arg(long, help = "Show detailed update information")]
+        verbose: bool,
+    },
+
     #[command(about = "Generate shell completions", hide = true)]
     Completions {
         #[arg(help = "Shell to generate completions for")]

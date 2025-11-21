@@ -274,7 +274,7 @@ impl Dashboard {
                 Line::from(Span::raw("Use 'tempo start' to begin tracking time")),
                 Line::from(Span::raw("")),
                 Line::from(Span::styled(
-                    "🎯 Set your focus and track your productivity",
+                    "Set your focus and track your productivity",
                     Style::default().fg(ColorScheme::NEON_CYAN),
                 )),
             ];
@@ -345,7 +345,7 @@ impl Dashboard {
             // Statistics text
             let stats_text = vec![
                 Line::from(vec![
-                    Span::raw("📊 Sessions: "),
+                    Span::raw("Sessions: "),
                     Span::styled(
                         sessions_count.to_string(),
                         Style::default()
@@ -354,21 +354,21 @@ impl Dashboard {
                     ),
                 ]),
                 Line::from(vec![
-                    Span::raw("⏱️  Total time: "),
+                    Span::raw("Total time: "),
                     Span::styled(
                         Formatter::format_duration(total_seconds),
                         Style::default().fg(ColorScheme::NEON_GREEN),
                     ),
                 ]),
                 Line::from(vec![
-                    Span::raw("📈 Avg session: "),
+                    Span::raw("Avg session: "),
                     Span::styled(
                         Formatter::format_duration(avg_seconds),
                         Style::default().fg(ColorScheme::NEON_CYAN),
                     ),
                 ]),
                 Line::from(vec![
-                    Span::raw("🎯 Target: "),
+                    Span::raw("Target: "),
                     Span::styled(
                         format!(
                             "{:.0}% complete",
@@ -425,7 +425,7 @@ impl Dashboard {
             // Placeholder for activity sparkline or mini-chart
             let activity_placeholder = Paragraph::new(vec![
                 Line::from(Span::styled(
-                    "📈 Activity Timeline",
+                    "Activity Timeline",
                     Style::default().fg(ColorScheme::NEON_CYAN),
                 )),
                 Line::from(Span::raw(" ▂▃▅▇█▇▅▃▂  (simulated)")),
@@ -439,11 +439,11 @@ impl Dashboard {
         } else {
             let no_stats_text = vec![
                 Line::from(Span::styled(
-                    "📊 No sessions today",
+                    "No sessions today",
                     Style::default().fg(ColorScheme::GRAY_TEXT),
                 )),
                 Line::from(Span::raw("")),
-                Line::from(Span::raw("🚀 Start your first session to see:")),
+                Line::from(Span::raw("Start your first session to see:")),
                 Line::from(Span::raw("  • Session count and timing")),
                 Line::from(Span::raw("  • Daily goal progress")),
                 Line::from(Span::raw("  • Activity patterns")),
@@ -486,10 +486,10 @@ impl Dashboard {
             };
 
             let activity_indicator = match metrics.activity_score {
-                s if s > 0.8 => "🔥 Very Active",
-                s if s > 0.6 => "⚡ Active",
-                s if s > 0.3 => "⏳ Moderate",
-                _ => "😴 Low Activity",
+                s if s > 0.8 => "Very Active",
+                s if s > 0.6 => "Active",
+                s if s > 0.3 => "Moderate",
+                _ => "Low Activity",
             };
 
             let metrics_text = vec![
@@ -628,7 +628,7 @@ impl Dashboard {
         // Clear the background
         let background = ColorScheme::base_block()
             .title(Span::styled(
-                " 🔄 Project Switcher ",
+                " Project Switcher ",
                 Style::default().fg(ColorScheme::title()),
             ))
             .title_alignment(Alignment::Center);
@@ -666,7 +666,7 @@ impl Dashboard {
                     let content = vec![
                         Line::from(vec![Span::styled(format!("{}", project.name), style)]),
                         Line::from(vec![Span::styled(
-                            format!("  📁 {}", project.path.to_string_lossy()),
+                            format!("  [P] {}", project.path.to_string_lossy()),
                             Style::default().fg(if i == self.selected_project_index {
                                 Color::Black
                             } else {

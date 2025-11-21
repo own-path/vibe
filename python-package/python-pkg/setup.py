@@ -41,19 +41,19 @@ class PostInstallCommand(install):
         try:
             print("Installing Tempo via cargo...")
             subprocess.check_call([sys.executable, "-c", "import subprocess; subprocess.check_call(['cargo', 'install', 'tempo'])"])
-            print("✅ Tempo installed successfully!")
-            print("\n🚀 Quick start:")
+            print("Tempo installed successfully!")
+            print("\nQuick start:")
             print("  tempo start               # Start the daemon")
             print("  tempo status              # Check status")
             print("  tempo session start      # Begin tracking")
             print("  tempo list                # View projects")
             print("  tempo dashboard           # Interactive dashboard")
         except subprocess.CalledProcessError:
-            print("❌ Failed to install via cargo.")
+            print("Failed to install via cargo.")
             print("Please ensure Rust is installed: https://rustup.rs/")
             print("Then run: cargo install tempo")
         except FileNotFoundError:
-            print("❌ Cargo not found. Please install Rust first: https://rustup.rs/")
+            print("Cargo not found. Please install Rust first: https://rustup.rs/")
             print("Then run: cargo install tempo")
 
 with open("README.md", "r", encoding="utf-8") as fh:
