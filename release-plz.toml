@@ -1,5 +1,5 @@
 [workspace]
-# Enable Git releases and changelog updates
+# Enable Git releases, changelog updates, and crates.io publishing
 git_release_enable = true
 git_tag_enable = true
 changelog_update = true
@@ -8,7 +8,7 @@ changelog_update = true
 name = "tempo-cli"
 # Allow any version changes
 semver_check = false
-# Enable releases for this package but skip crates.io publishing
+# Enable releases for this package including crates.io publishing
 release = true
-# Skip publishing to crates.io
-publish = false
+# Enable publishing to crates.io
+publish = true
