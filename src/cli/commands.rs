@@ -19,6 +19,7 @@ use crate::utils::paths::{
 use crate::utils::validation::{validate_project_description, validate_project_name};
 use anyhow::{Context, Result};
 use chrono::{TimeZone, Utc};
+use serde::Deserialize;
 use std::env;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -2967,7 +2968,118 @@ async fn show_pool_stats() -> Result<()> {
     Ok(())
 }
 
-async fn handle_update(_check: bool, _force: bool, _verbose: bool) -> Result<()> {
-    println!("Update command is not yet implemented.");
+#[derive(Deserialize)]
+struct GitHubRelease {
+    tag_name: String,
+    name: String,
+    body: String,
+    published_at: String,
+    prerelease: bool,
+}
+
+async fn handle_update(check: bool, force: bool, verbose: bool) -> Result<()> {
+    let current_version = env!("CARGO_PKG_VERSION");
+    
+    if verbose {
+        println!("🔍 Current version: v{}", current_version);
+        println!("📡 Checking for updates...");
+    } else {
+        println!("🔍 Checking for updates...");
+    }
+
+    // Fetch latest release information from GitHub
+    let client = reqwest::Client::new();
+    let response = client
+        .get("https://api.github.com/repos/own-path/vibe/releases/latest")
+        .header("User-Agent", format!("tempo-cli/{}", current_version))
+        .send()
+        .await
+        .context("Failed to fetch release information")?;
+
+    if !response.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "Failed to fetch release information: HTTP {}",
+            response.status()
+        ));
+    }
+
+    let release: GitHubRelease = response
+        .json()
+        .await
+        .context("Failed to parse release information")?;
+
+    let latest_version = release.tag_name.trim_start_matches('v');
+    
+    if verbose {
+        println!("📦 Latest version: v{}", latest_version);
+        println!("📅 Released: {}", release.published_at);
+    }
+
+    // Compare versions
+    let current_semver = semver::Version::parse(current_version)
+        .context("Failed to parse current version")?;
+    let latest_semver = semver::Version::parse(latest_version)
+        .context("Failed to parse latest version")?;
+
+    if current_semver >= latest_semver && !force {
+        println!("✅ You're already running the latest version (v{})", current_version);
+        if check {
+            return Ok(());
+        }
+        
+        if !force {
+            println!("💡 Use --force to reinstall the current version");
+            return Ok(());
+        }
+    }
+
+    if check {
+        if current_semver < latest_semver {
+            println!("📦 Update available: v{} → v{}", current_version, latest_version);
+            println!("🔗 Run `tempo update` to install the latest version");
+            
+            if verbose && !release.body.is_empty() {
+                println!("\n📝 Release Notes:");
+                println!("{}", release.body);
+            }
+        }
+        return Ok(());
+    }
+
+    if current_semver < latest_semver || force {
+        println!("⬇️  Updating tempo from v{} to v{}", current_version, latest_version);
+        
+        if verbose {
+            println!("🔧 Installing via cargo...");
+        }
+        
+        // Update using cargo install
+        let mut cmd = Command::new("cargo");
+        cmd.args(&["install", "tempo-cli", "--force"]);
+        
+        if verbose {
+            cmd.stdout(Stdio::inherit())
+               .stderr(Stdio::inherit());
+        } else {
+            cmd.stdout(Stdio::null())
+               .stderr(Stdio::null());
+        }
+
+        let status = cmd.status()
+            .context("Failed to run cargo install command")?;
+
+        if status.success() {
+            println!("✅ Successfully updated tempo to v{}", latest_version);
+            println!("🎉 You can now use the latest features!");
+            
+            if !release.body.is_empty() && verbose {
+                println!("\n📝 What's new in v{}:", latest_version);
+                println!("{}", release.body);
+            }
+        } else {
+            return Err(anyhow::anyhow!("Failed to install update. Try running manually: cargo install tempo-cli --force"));
+        }
+    }
+
     Ok(())
 }

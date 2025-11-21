@@ -1,6 +1,6 @@
 [package]
 name = "tempo-cli"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 authors = ["Own Path <brandy.daryl@gmail.com>"]
 description = "Automatic project time tracking CLI tool with beautiful terminal interface"
@@ -70,6 +70,12 @@ crossterm = "0.27"
 
 # Testing utilities
 tempfile = "3.0"
+
+# HTTP client for update checks
+reqwest = { version = "0.12", features = ["json"] }
+
+# Semantic versioning
+semver = "1.0"
 
 [dev-dependencies]
 criterion = "0.5"
