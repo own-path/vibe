@@ -90,7 +90,7 @@ setup(
         "Programming Language :: Python :: 3.12",
         "Programming Language :: Rust",
         "Topic :: Office/Business :: Scheduling",
-        "Topic :: Software Development :: Tools",
+        "Topic :: Software Development",
         "Topic :: System :: Monitoring",
         "Topic :: Utilities",
         "Environment :: Console",
