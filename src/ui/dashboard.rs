@@ -1,24 +1,24 @@
 use anyhow::Result;
-use chrono::{Local, DateTime, Utc, TimeZone};
+use chrono::Local;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use log::debug;
 use ratatui::{
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Gauge, Paragraph, Wrap, List, ListItem, BarChart, Sparkline},
+    widgets::{Gauge, List, ListItem, Paragraph, Wrap},
     Frame, Terminal,
 };
 use std::time::Duration;
-use tokio::runtime::Handle;
-use log::debug;
 
 use crate::{
-    models::{Project, Session},
-    db::{Database, get_database_path},
     db::queries::ProjectQueries,
-    utils::ipc::{IpcClient, IpcMessage, IpcResponse, get_socket_path, is_daemon_running},
+    db::{get_database_path, Database},
+    models::{Project, Session},
     ui::formatter::Formatter,
+    ui::widgets::{ColorScheme, Spinner},
+    utils::ipc::{get_socket_path, is_daemon_running, IpcClient, IpcMessage, IpcResponse},
 };
 
 pub struct Dashboard {
@@ -26,6 +26,7 @@ pub struct Dashboard {
     show_project_switcher: bool,
     available_projects: Vec<Project>,
     selected_project_index: usize,
+    spinner: Spinner,
 }
 
 impl Dashboard {
@@ -40,17 +41,18 @@ impl Dashboard {
             IpcClient::new()?
         };
 
-        Ok(Self { 
+        Ok(Self {
             client,
             show_project_switcher: false,
             available_projects: Vec::new(),
             selected_project_index: 0,
+            spinner: Spinner::new(),
         })
     }
 
     pub async fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<()> {
         let mut heartbeat_counter = 0;
-        
+
         loop {
             // Send activity heartbeat every 30 iterations (3 seconds at 100ms intervals)
             if heartbeat_counter >= 30 {
@@ -61,6 +63,9 @@ impl Dashboard {
                 heartbeat_counter = 0;
             }
             heartbeat_counter += 1;
+
+            // Tick spinner animation
+            self.spinner.next();
 
             // Get current status
             let current_session = self.get_current_session().await?;
@@ -73,42 +78,46 @@ impl Dashboard {
             let session_metrics = self.get_session_metrics().await.unwrap_or(None);
 
             terminal.draw(|f| {
-                self.render_dashboard_sync(f, &current_session, &current_project, &daily_stats, &session_metrics);
+                self.render_dashboard_sync(
+                    f,
+                    &current_session,
+                    &current_project,
+                    &daily_stats,
+                    &session_metrics,
+                );
             })?;
 
             // Handle input
             if event::poll(Duration::from_millis(100))? {
                 match event::read()? {
-                    Event::Key(key) if key.kind == KeyEventKind::Press => {
-                        match key.code {
-                            KeyCode::Char('q') | KeyCode::Esc => {
-                                if self.show_project_switcher {
-                                    self.show_project_switcher = false;
-                                } else {
-                                    break;
-                                }
+                    Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+                        KeyCode::Char('q') | KeyCode::Esc => {
+                            if self.show_project_switcher {
+                                self.show_project_switcher = false;
+                            } else {
+                                break;
                             }
-                            KeyCode::Char('p') => {
-                                self.toggle_project_switcher().await?;
-                            }
-                            KeyCode::Up => {
-                                if self.show_project_switcher {
-                                    self.navigate_projects(-1);
-                                }
-                            }
-                            KeyCode::Down => {
-                                if self.show_project_switcher {
-                                    self.navigate_projects(1);
-                                }
-                            }
-                            KeyCode::Enter => {
-                                if self.show_project_switcher {
-                                    self.switch_to_selected_project().await?;
-                                }
-                            }
-                            _ => {}
                         }
-                    }
+                        KeyCode::Char('p') => {
+                            self.toggle_project_switcher().await?;
+                        }
+                        KeyCode::Up => {
+                            if self.show_project_switcher {
+                                self.navigate_projects(-1);
+                            }
+                        }
+                        KeyCode::Down => {
+                            if self.show_project_switcher {
+                                self.navigate_projects(1);
+                            }
+                        }
+                        KeyCode::Enter => {
+                            if self.show_project_switcher {
+                                self.switch_to_selected_project().await?;
+                            }
+                        }
+                        _ => {}
+                    },
                     _ => {}
                 }
             }
@@ -138,10 +147,16 @@ impl Dashboard {
             .split(f.size());
 
         // Title
-        let title = Paragraph::new("Vibe - Time Tracking Dashboard")
-            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+        let spinner_char = self.spinner.current();
+        let title_text = format!(" {} Tempo - Time Tracking Dashboard ", spinner_char);
+        let title = Paragraph::new(title_text)
+            .style(
+                Style::default()
+                    .fg(ColorScheme::NEON_PINK)
+                    .add_modifier(Modifier::BOLD),
+            )
             .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::ALL));
+            .block(ColorScheme::base_block());
         f.render_widget(title, chunks[0]);
 
         // Current session info
@@ -153,7 +168,7 @@ impl Dashboard {
         // Real-time metrics
         self.render_session_metrics(f, chunks[3], session_metrics);
 
-        // Statistics  
+        // Statistics
         self.render_statistics_sync(f, chunks[4], daily_stats);
 
         // Help
@@ -166,16 +181,16 @@ impl Dashboard {
     }
 
     fn render_session_info(&self, f: &mut Frame, area: Rect, session: &Option<Session>) {
-        let block = Block::default()
-            .title("Current Session")
-            .borders(Borders::ALL)
-            .style(Style::default().fg(Color::White));
+        let block = ColorScheme::base_block().title(Span::styled(
+            " Current Session ",
+            Style::default().fg(ColorScheme::title()),
+        ));
 
         if let Some(session) = session {
             let now = Local::now();
-            let elapsed_seconds = (now.timestamp() - session.start_time.timestamp()) 
+            let elapsed_seconds = (now.timestamp() - session.start_time.timestamp())
                 - session.paused_duration.num_seconds();
-            
+
             // Split the area for text and progress bar
             let session_chunks = Layout::default()
                 .direction(Direction::Vertical)
@@ -184,70 +199,83 @@ impl Dashboard {
                     Constraint::Length(2), // Progress bar
                 ])
                 .split(area);
-            
+
             // Session information
             let status_text = vec![
                 Line::from(vec![
                     Span::raw("Status: "),
-                    Span::styled("● ACTIVE", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "● ACTIVE",
+                        Style::default()
+                            .fg(ColorScheme::NEON_GREEN)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                 ]),
                 Line::from(vec![
                     Span::raw("Started: "),
                     Span::styled(
                         Formatter::format_timestamp(&session.start_time.with_timezone(&Local)),
-                        Style::default().fg(Color::White)
+                        Style::default().fg(ColorScheme::WHITE_TEXT),
                     ),
                 ]),
                 Line::from(vec![
                     Span::raw("Elapsed: "),
                     Span::styled(
                         Formatter::format_duration(elapsed_seconds),
-                        Formatter::create_highlight_style()
+                        Style::default()
+                            .fg(ColorScheme::NEON_CYAN)
+                            .add_modifier(Modifier::BOLD),
                     ),
                 ]),
                 Line::from(vec![
                     Span::raw("Context: "),
                     Span::styled(
                         session.context.to_string(),
-                        Style::default().fg(Color::Yellow)
+                        Style::default().fg(ColorScheme::NEON_YELLOW),
                     ),
                 ]),
             ];
 
-            let session_block = Block::default()
-                .borders(Borders::ALL)
-                .title("Current Session")
-                .style(Style::default().fg(Color::White));
+            let session_block = ColorScheme::base_block().title(Span::styled(
+                " Current Session ",
+                Style::default().fg(ColorScheme::title()),
+            ));
 
             let paragraph = Paragraph::new(status_text)
                 .block(session_block)
                 .wrap(Wrap { trim: true });
             f.render_widget(paragraph, session_chunks[0]);
-            
+
             // Visual progress bar for session duration
             let progress_ratio = self.calculate_session_progress(elapsed_seconds);
             let progress_bar = Gauge::default()
-                .block(Block::default()
-                    .borders(Borders::ALL)
-                    .title("Session Progress")
-                    .style(Style::default().fg(Color::Cyan)))
-                .gauge_style(Style::default().fg(Color::Green).bg(Color::Black))
+                .block(ColorScheme::base_block().title(Span::styled(
+                    " Session Progress ",
+                    Style::default().fg(ColorScheme::title()),
+                )))
+                .gauge_style(
+                    Style::default()
+                        .fg(ColorScheme::NEON_GREEN)
+                        .bg(Color::Black),
+                )
                 .percent((progress_ratio * 100.0) as u16)
-                .label(format!("{} / target: 2h", Formatter::format_duration(elapsed_seconds)));
+                .label(format!(
+                    "{} / target: 2h",
+                    Formatter::format_duration(elapsed_seconds)
+                ));
             f.render_widget(progress_bar, session_chunks[1]);
-            
         } else {
             let no_session_text = vec![
                 Line::from(Span::styled(
                     "No active session",
-                    Formatter::create_warning_style()
+                    Style::default().fg(ColorScheme::GRAY_TEXT),
                 )),
                 Line::from(Span::raw("")),
                 Line::from(Span::raw("Use 'tempo start' to begin tracking time")),
                 Line::from(Span::raw("")),
                 Line::from(Span::styled(
                     "🎯 Set your focus and track your productivity",
-                    Style::default().fg(Color::Cyan)
+                    Style::default().fg(ColorScheme::NEON_CYAN),
                 )),
             ];
 
@@ -259,20 +287,28 @@ impl Dashboard {
     }
 
     fn render_project_info(&self, f: &mut Frame, area: Rect, project: &Option<Project>) {
-        let block = Block::default()
-            .title("Current Project")
-            .borders(Borders::ALL)
-            .style(Style::default().fg(Color::White));
+        let block = ColorScheme::base_block().title(Span::styled(
+            " Current Project ",
+            Style::default().fg(ColorScheme::title()),
+        ));
 
         if let Some(project) = project {
             let project_text = vec![
                 Line::from(vec![
                     Span::raw("Name: "),
-                    Span::styled(project.name.clone(), Formatter::create_highlight_style()),
+                    Span::styled(
+                        &project.name,
+                        Style::default()
+                            .fg(ColorScheme::NEON_YELLOW)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                 ]),
                 Line::from(vec![
                     Span::raw("Path: "),
-                    Span::styled(project.path.to_string_lossy().to_string(), Style::default().fg(Color::Gray)),
+                    Span::styled(
+                        project.path.to_string_lossy().to_string(),
+                        Style::default().fg(ColorScheme::GRAY_TEXT),
+                    ),
                 ]),
             ];
 
@@ -281,12 +317,10 @@ impl Dashboard {
                 .wrap(Wrap { trim: true });
             f.render_widget(paragraph, area);
         } else {
-            let no_project_text = vec![
-                Line::from(Span::styled(
-                    "No active project",
-                    Formatter::create_warning_style()
-                )),
-            ];
+            let no_project_text = vec![Line::from(Span::styled(
+                "No active project",
+                Style::default().fg(ColorScheme::GRAY_TEXT),
+            ))];
 
             let paragraph = Paragraph::new(no_project_text)
                 .block(block)
@@ -297,7 +331,7 @@ impl Dashboard {
 
     fn render_statistics_sync(&self, f: &mut Frame, area: Rect, daily_stats: &(i64, i64, i64)) {
         let (sessions_count, total_seconds, avg_seconds) = *daily_stats;
-        
+
         if sessions_count > 0 {
             // Split area for text and visual chart
             let stats_chunks = Layout::default()
@@ -312,35 +346,47 @@ impl Dashboard {
             let stats_text = vec![
                 Line::from(vec![
                     Span::raw("📊 Sessions: "),
-                    Span::styled(sessions_count.to_string(), Formatter::create_highlight_style()),
+                    Span::styled(
+                        sessions_count.to_string(),
+                        Style::default()
+                            .fg(ColorScheme::NEON_PURPLE)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                 ]),
                 Line::from(vec![
                     Span::raw("⏱️  Total time: "),
                     Span::styled(
                         Formatter::format_duration(total_seconds),
-                        Formatter::create_success_style()
+                        Style::default().fg(ColorScheme::NEON_GREEN),
                     ),
                 ]),
                 Line::from(vec![
                     Span::raw("📈 Avg session: "),
                     Span::styled(
                         Formatter::format_duration(avg_seconds),
-                        Style::default().fg(Color::Cyan)
+                        Style::default().fg(ColorScheme::NEON_CYAN),
                     ),
                 ]),
                 Line::from(vec![
                     Span::raw("🎯 Target: "),
                     Span::styled(
-                        format!("{:.0}% complete", (total_seconds as f64 / (8.0 * 3600.0)) * 100.0),
-                        if total_seconds > 4 * 3600 { Style::default().fg(Color::Green) } else { Style::default().fg(Color::Yellow) }
+                        format!(
+                            "{:.0}% complete",
+                            (total_seconds as f64 / (8.0 * 3600.0)) * 100.0
+                        ),
+                        if total_seconds > 4 * 3600 {
+                            Style::default().fg(ColorScheme::NEON_GREEN)
+                        } else {
+                            Style::default().fg(ColorScheme::NEON_YELLOW)
+                        },
                     ),
                 ]),
             ];
 
-            let text_block = Block::default()
-                .title("Today's Summary")
-                .borders(Borders::ALL)
-                .style(Style::default().fg(Color::White));
+            let text_block = ColorScheme::base_block().title(Span::styled(
+                " Today's Summary ",
+                Style::default().fg(ColorScheme::title()),
+            ));
 
             let paragraph = Paragraph::new(stats_text)
                 .block(text_block)
@@ -349,8 +395,9 @@ impl Dashboard {
 
             // Visual progress bar for daily goal (8 hours)
             let daily_goal_seconds = 8 * 3600; // 8 hours
-            let progress_percentage = ((total_seconds as f64 / daily_goal_seconds as f64) * 100.0).min(100.0);
-            
+            let progress_percentage =
+                ((total_seconds as f64 / daily_goal_seconds as f64) * 100.0).min(100.0);
+
             let goal_chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -360,36 +407,40 @@ impl Dashboard {
                 .split(stats_chunks[1]);
 
             let daily_progress = Gauge::default()
-                .block(Block::default()
-                    .borders(Borders::ALL)
-                    .title("Daily Goal (8h)")
-                    .style(Style::default().fg(Color::Cyan)))
-                .gauge_style(Style::default().fg(
-                    if progress_percentage >= 100.0 { Color::Green }
-                    else if progress_percentage >= 50.0 { Color::Yellow }
-                    else { Color::Red }
-                ))
+                .block(ColorScheme::base_block().title(Span::styled(
+                    " Daily Goal (8h) ",
+                    Style::default().fg(ColorScheme::title()),
+                )))
+                .gauge_style(Style::default().fg(if progress_percentage >= 100.0 {
+                    ColorScheme::NEON_GREEN
+                } else if progress_percentage >= 50.0 {
+                    ColorScheme::NEON_YELLOW
+                } else {
+                    ColorScheme::NEON_PINK
+                }))
                 .percent(progress_percentage as u16)
                 .label(format!("{:.1}%", progress_percentage));
             f.render_widget(daily_progress, goal_chunks[0]);
 
             // Placeholder for activity sparkline or mini-chart
             let activity_placeholder = Paragraph::new(vec![
-                Line::from(Span::styled("📈 Activity Timeline", Style::default().fg(Color::Cyan))),
-                Line::from(Span::raw("▁▂▃▅▇█▇▅▃▂▁ (simulated)")),
+                Line::from(Span::styled(
+                    "📈 Activity Timeline",
+                    Style::default().fg(ColorScheme::NEON_CYAN),
+                )),
+                Line::from(Span::raw(" ▂▃▅▇█▇▅▃▂  (simulated)")),
             ])
-            .block(Block::default()
-                .borders(Borders::ALL)
-                .title("Activity Pattern")
-                .style(Style::default().fg(Color::Cyan)))
+            .block(ColorScheme::base_block().title(Span::styled(
+                " Activity Pattern ",
+                Style::default().fg(ColorScheme::title()),
+            )))
             .alignment(Alignment::Center);
             f.render_widget(activity_placeholder, goal_chunks[1]);
-
         } else {
             let no_stats_text = vec![
                 Line::from(Span::styled(
                     "📊 No sessions today",
-                    Formatter::create_warning_style()
+                    Style::default().fg(ColorScheme::GRAY_TEXT),
                 )),
                 Line::from(Span::raw("")),
                 Line::from(Span::raw("🚀 Start your first session to see:")),
@@ -399,10 +450,10 @@ impl Dashboard {
                 Line::from(Span::raw("  • Productivity insights")),
             ];
 
-            let block = Block::default()
-                .title("Today's Summary")
-                .borders(Borders::ALL)
-                .style(Style::default().fg(Color::White));
+            let block = ColorScheme::base_block().title(Span::styled(
+                " Today's Summary ",
+                Style::default().fg(ColorScheme::title()),
+            ));
 
             let paragraph = Paragraph::new(no_stats_text)
                 .block(block)
@@ -410,8 +461,13 @@ impl Dashboard {
             f.render_widget(paragraph, area);
         }
     }
-    
-    fn render_session_metrics(&self, f: &mut Frame, area: Rect, metrics: &Option<crate::utils::ipc::SessionMetrics>) {
+
+    fn render_session_metrics(
+        &self,
+        f: &mut Frame,
+        area: Rect,
+        metrics: &Option<crate::utils::ipc::SessionMetrics>,
+    ) {
         if let Some(metrics) = metrics {
             // Split area for metrics text and visual indicators
             let metrics_chunks = Layout::default()
@@ -424,11 +480,11 @@ impl Dashboard {
 
             // Metrics text
             let activity_color = match metrics.activity_score {
-                s if s > 0.7 => Color::Green,
-                s if s > 0.3 => Color::Yellow,
-                _ => Color::Red,
+                s if s > 0.7 => ColorScheme::NEON_GREEN,
+                s if s > 0.3 => ColorScheme::NEON_YELLOW,
+                _ => ColorScheme::NEON_PINK,
             };
-            
+
             let activity_indicator = match metrics.activity_score {
                 s if s > 0.8 => "🔥 Very Active",
                 s if s > 0.6 => "⚡ Active",
@@ -445,36 +501,42 @@ impl Dashboard {
                     Span::raw("Score: "),
                     Span::styled(
                         format!("{:.1}%", metrics.activity_score * 100.0),
-                        Style::default().fg(activity_color)
+                        Style::default().fg(activity_color),
                     ),
                 ]),
                 Line::from(vec![
                     Span::raw("Active: "),
                     Span::styled(
                         Formatter::format_duration(metrics.active_duration),
-                        Formatter::create_highlight_style()
+                        Style::default().fg(ColorScheme::NEON_CYAN),
                     ),
                 ]),
                 Line::from(vec![
                     Span::raw("Paused: "),
                     Span::styled(
                         Formatter::format_duration(metrics.paused_duration),
-                        Style::default().fg(Color::Gray)
+                        Style::default().fg(ColorScheme::GRAY_TEXT),
                     ),
                 ]),
                 Line::from(vec![
                     Span::raw("Efficiency: "),
                     Span::styled(
                         format!("{:.0}%", self.calculate_efficiency_percentage(metrics)),
-                        Style::default().fg(if self.calculate_efficiency_percentage(metrics) > 70.0 { Color::Green } else { Color::Yellow })
+                        Style::default().fg(
+                            if self.calculate_efficiency_percentage(metrics) > 70.0 {
+                                ColorScheme::NEON_GREEN
+                            } else {
+                                ColorScheme::NEON_YELLOW
+                            },
+                        ),
                     ),
                 ]),
             ];
 
-            let text_block = Block::default()
-                .title("Real-time Metrics")
-                .borders(Borders::ALL)
-                .style(Style::default().fg(Color::White));
+            let text_block = ColorScheme::base_block().title(Span::styled(
+                " Real-time Metrics ",
+                Style::default().fg(ColorScheme::title()),
+            ));
 
             let paragraph = Paragraph::new(metrics_text)
                 .block(text_block)
@@ -492,10 +554,10 @@ impl Dashboard {
 
             // Activity level gauge
             let activity_gauge = Gauge::default()
-                .block(Block::default()
-                    .borders(Borders::ALL)
-                    .title("Activity")
-                    .style(Style::default().fg(Color::Cyan)))
+                .block(ColorScheme::base_block().title(Span::styled(
+                    " Activity ",
+                    Style::default().fg(ColorScheme::title()),
+                )))
                 .gauge_style(Style::default().fg(activity_color))
                 .percent((metrics.activity_score * 100.0) as u16)
                 .label(format!("{:.0}%", metrics.activity_score * 100.0));
@@ -503,30 +565,33 @@ impl Dashboard {
 
             // Efficiency gauge
             let efficiency = self.calculate_efficiency_percentage(metrics);
-            let efficiency_color = if efficiency > 80.0 { Color::Green } 
-                                 else if efficiency > 60.0 { Color::Yellow } 
-                                 else { Color::Red };
+            let efficiency_color = if efficiency > 80.0 {
+                ColorScheme::NEON_GREEN
+            } else if efficiency > 60.0 {
+                ColorScheme::NEON_YELLOW
+            } else {
+                ColorScheme::NEON_PINK
+            };
 
             let efficiency_gauge = Gauge::default()
-                .block(Block::default()
-                    .borders(Borders::ALL)
-                    .title("Efficiency")
-                    .style(Style::default().fg(Color::Cyan)))
+                .block(ColorScheme::base_block().title(Span::styled(
+                    " Efficiency ",
+                    Style::default().fg(ColorScheme::title()),
+                )))
                 .gauge_style(Style::default().fg(efficiency_color))
                 .percent(efficiency as u16)
                 .label(format!("{:.0}%", efficiency));
             f.render_widget(efficiency_gauge, activity_chunks[1]);
-
         } else {
-            let no_metrics_block = Block::default()
-                .title("Real-time Metrics")
-                .borders(Borders::ALL)
-                .style(Style::default().fg(Color::White));
+            let no_metrics_block = ColorScheme::base_block().title(Span::styled(
+                " Real-time Metrics ",
+                Style::default().fg(ColorScheme::title()),
+            ));
 
             let no_metrics_text = vec![
                 Line::from(Span::styled(
                     "No active session",
-                    Formatter::create_warning_style()
+                    Style::default().fg(ColorScheme::GRAY_TEXT),
                 )),
                 Line::from(Span::raw("")),
                 Line::from(Span::raw("Start tracking to see:")),
@@ -548,25 +613,25 @@ impl Dashboard {
         } else {
             "Press 'q' or 'Esc' to quit | 'p' for project switcher | Updates every 100ms"
         };
-        
+
         let help_paragraph = Paragraph::new(help_text)
-            .style(Style::default().fg(Color::Gray))
+            .style(Style::default().fg(ColorScheme::GRAY_TEXT))
             .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::ALL));
+            .block(ColorScheme::base_block());
         f.render_widget(help_paragraph, area);
     }
 
     fn render_project_switcher(&self, f: &mut Frame, area: Rect) {
         // Create a centered popup
         let popup_area = self.centered_rect(60, 70, area);
-        
+
         // Clear the background
-        let background = Block::default()
-            .style(Style::default().bg(Color::Black))
-            .borders(Borders::ALL)
-            .title("🔄 Project Switcher")
-            .title_alignment(Alignment::Center)
-            .border_style(Style::default().fg(Color::Cyan));
+        let background = ColorScheme::base_block()
+            .title(Span::styled(
+                " 🔄 Project Switcher ",
+                Style::default().fg(ColorScheme::title()),
+            ))
+            .title_alignment(Alignment::Center);
         f.render_widget(background, popup_area);
 
         // Create the project list
@@ -576,40 +641,46 @@ impl Dashboard {
             .split(popup_area)[0];
 
         if self.available_projects.is_empty() {
-            let no_projects = Paragraph::new("No projects found\n\nCreate a project first using:\nvibe init <project-name>")
-                .style(Style::default().fg(Color::Yellow))
-                .alignment(Alignment::Center)
-                .wrap(Wrap { trim: true });
+            let no_projects = Paragraph::new(
+                "No projects found\n\nCreate a project first using:\ntempo init <project-name>",
+            )
+            .style(Style::default().fg(ColorScheme::NEON_YELLOW))
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true });
             f.render_widget(no_projects, projects_area);
         } else {
-            let project_items: Vec<ListItem> = self.available_projects
+            let project_items: Vec<ListItem> = self
+                .available_projects
                 .iter()
                 .enumerate()
                 .map(|(i, project)| {
                     let style = if i == self.selected_project_index {
-                        Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
+                        Style::default()
+                            .fg(Color::Black)
+                            .bg(ColorScheme::NEON_CYAN)
+                            .add_modifier(Modifier::BOLD)
                     } else {
-                        Style::default().fg(Color::White)
+                        Style::default().fg(ColorScheme::WHITE_TEXT)
                     };
 
                     let content = vec![
-                        Line::from(vec![
-                            Span::styled(format!("{}", project.name), style),
-                        ]),
-                        Line::from(vec![
-                            Span::styled(
-                                format!("  📁 {}", project.path.to_string_lossy()),
-                                Style::default().fg(if i == self.selected_project_index { Color::DarkGray } else { Color::Gray })
-                            ),
-                        ]),
+                        Line::from(vec![Span::styled(format!("{}", project.name), style)]),
+                        Line::from(vec![Span::styled(
+                            format!("  📁 {}", project.path.to_string_lossy()),
+                            Style::default().fg(if i == self.selected_project_index {
+                                Color::Black
+                            } else {
+                                ColorScheme::GRAY_TEXT
+                            }),
+                        )]),
                     ];
 
                     ListItem::new(content).style(style)
                 })
                 .collect();
 
-            let projects_list = List::new(project_items)
-                .style(Style::default().fg(Color::White));
+            let projects_list =
+                List::new(project_items).style(Style::default().fg(ColorScheme::WHITE_TEXT));
             f.render_widget(projects_list, projects_area);
         }
     }
@@ -639,7 +710,10 @@ impl Dashboard {
             return Ok(None);
         }
 
-        let response = self.client.send_message(&IpcMessage::GetActiveSession).await?;
+        let response = self
+            .client
+            .send_message(&IpcMessage::GetActiveSession)
+            .await?;
         match response {
             IpcResponse::ActiveSession(session) => Ok(session),
             IpcResponse::Error(e) => Err(anyhow::anyhow!("Failed to get active session: {}", e)),
@@ -652,7 +726,10 @@ impl Dashboard {
             return Ok(None);
         }
 
-        let response = self.client.send_message(&IpcMessage::GetProject(session.project_id)).await?;
+        let response = self
+            .client
+            .send_message(&IpcMessage::GetProject(session.project_id))
+            .await?;
         match response {
             IpcResponse::Project(project) => Ok(project),
             IpcResponse::Error(e) => Err(anyhow::anyhow!("Failed to get project: {}", e)),
@@ -660,55 +737,67 @@ impl Dashboard {
         }
     }
 
-    async fn get_today_stats(&mut self) -> Result<(i64, i64, i64)> { // (sessions_count, total_seconds, avg_seconds)
+    async fn get_today_stats(&mut self) -> Result<(i64, i64, i64)> {
+        // (sessions_count, total_seconds, avg_seconds)
         if !is_daemon_running() {
             return Ok((0, 0, 0));
         }
 
         let today = chrono::Local::now().date_naive();
-        let response = self.client.send_message(&IpcMessage::GetDailyStats(today)).await?;
+        let response = self
+            .client
+            .send_message(&IpcMessage::GetDailyStats(today))
+            .await?;
         match response {
-            IpcResponse::DailyStats { sessions_count, total_seconds, avg_seconds } => {
-                Ok((sessions_count, total_seconds, avg_seconds))
-            },
+            IpcResponse::DailyStats {
+                sessions_count,
+                total_seconds,
+                avg_seconds,
+            } => Ok((sessions_count, total_seconds, avg_seconds)),
             IpcResponse::Error(e) => Err(anyhow::anyhow!("Failed to get daily stats: {}", e)),
             _ => Ok((0, 0, 0)),
         }
     }
-    
+
     async fn get_session_metrics(&mut self) -> Result<Option<crate::utils::ipc::SessionMetrics>> {
         if !is_daemon_running() {
             return Ok(None);
         }
 
-        let response = self.client.send_message(&IpcMessage::GetSessionMetrics(0)).await?;
+        let response = self
+            .client
+            .send_message(&IpcMessage::GetSessionMetrics(0))
+            .await?;
         match response {
             IpcResponse::SessionMetrics(metrics) => Ok(Some(metrics)),
             IpcResponse::Error(_) => Ok(None), // No active session
             _ => Ok(None),
         }
     }
-    
+
     async fn send_activity_heartbeat(&mut self) -> Result<()> {
         if !is_daemon_running() {
             return Ok(());
         }
 
-        let _response = self.client.send_message(&IpcMessage::ActivityHeartbeat).await?;
+        let _response = self
+            .client
+            .send_message(&IpcMessage::ActivityHeartbeat)
+            .await?;
         Ok(())
     }
-    
+
     fn calculate_session_progress(&self, elapsed_seconds: i64) -> f64 {
         // Progress towards 2-hour session target
         let target_seconds = 2 * 3600; // 2 hours
         (elapsed_seconds as f64 / target_seconds as f64).min(1.0)
     }
-    
+
     fn calculate_efficiency_percentage(&self, metrics: &crate::utils::ipc::SessionMetrics) -> f64 {
         if metrics.total_duration == 0 {
             return 0.0;
         }
-        
+
         let efficiency = (metrics.active_duration as f64 / metrics.total_duration as f64) * 100.0;
         efficiency.min(100.0)
     }
@@ -728,7 +817,9 @@ impl Dashboard {
     fn navigate_projects(&mut self, direction: i32) {
         if !self.available_projects.is_empty() {
             let current = self.selected_project_index as i32;
-            let new_index = (current + direction).max(0).min(self.available_projects.len() as i32 - 1);
+            let new_index = (current + direction)
+                .max(0)
+                .min(self.available_projects.len() as i32 - 1);
             self.selected_project_index = new_index as usize;
         }
     }
@@ -737,12 +828,17 @@ impl Dashboard {
         if let Some(selected_project) = self.available_projects.get(self.selected_project_index) {
             // Switch to the selected project
             let project_id = selected_project.id.unwrap_or(0);
-            let response = self.client.send_message(&IpcMessage::SwitchProject(project_id)).await?;
+            let response = self
+                .client
+                .send_message(&IpcMessage::SwitchProject(project_id))
+                .await?;
             match response {
                 IpcResponse::Success => {
                     self.show_project_switcher = false;
-                },
-                IpcResponse::Error(e) => return Err(anyhow::anyhow!("Failed to switch project: {}", e)),
+                }
+                IpcResponse::Error(e) => {
+                    return Err(anyhow::anyhow!("Failed to switch project: {}", e))
+                }
                 _ => return Err(anyhow::anyhow!("Unexpected response")),
             }
         }
@@ -752,17 +848,8 @@ impl Dashboard {
     async fn load_projects(&mut self) -> Result<Vec<Project>> {
         let db_path = get_database_path()?;
         let db = Database::new(&db_path)?;
-        
+
         let projects = ProjectQueries::list_all(&db.connection, false)?; // Don't include archived
         Ok(projects)
-    }
-}
-
-fn should_quit(event: Event) -> bool {
-    match event {
-        Event::Key(key) if key.kind == KeyEventKind::Press => {
-            matches!(key.code, KeyCode::Char('q') | KeyCode::Esc)
-        }
-        _ => false,
     }
 }

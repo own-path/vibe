@@ -180,6 +180,22 @@ impl ProjectQueries {
         
         Ok(stats)
     }
+
+    pub fn update_name(conn: &Connection, project_id: i64, name: String) -> Result<bool> {
+        let mut stmt = conn.prepare(
+            "UPDATE projects SET name = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2"
+        )?;
+        let changes = stmt.execute([&name, &project_id.to_string()])?;
+        Ok(changes > 0)
+    }
+
+    pub fn update_archived(conn: &Connection, project_id: i64, archived: bool) -> Result<bool> {
+        let mut stmt = conn.prepare(
+            "UPDATE projects SET is_archived = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2"
+        )?;
+        let changes = stmt.execute(params![archived, project_id])?;
+        Ok(changes > 0)
+    }
 }
 
 pub struct SessionQueries;
@@ -215,7 +231,8 @@ impl SessionQueries {
                 project_id: row.get(1)?,
                 start_time: row.get(2)?,
                 end_time: row.get(3)?,
-                context: row.get::<_, String>(4)?.parse().unwrap(),
+                context: row.get::<_, String>(4)?.parse()
+                    .map_err(|e| rusqlite::Error::InvalidColumnType(4, "context".to_string(), rusqlite::types::Type::Text))?,
                 paused_duration: chrono::Duration::seconds(row.get::<_, i64>(5)?),
                 notes: row.get(6)?,
                 created_at: row.get(7)?,
@@ -246,7 +263,8 @@ impl SessionQueries {
                 project_id: row.get(1)?,
                 start_time: row.get(2)?,
                 end_time: row.get(3)?,
-                context: row.get::<_, String>(4)?.parse().unwrap(),
+                context: row.get::<_, String>(4)?.parse()
+                    .map_err(|e| rusqlite::Error::InvalidColumnType(4, "context".to_string(), rusqlite::types::Type::Text))?,
                 paused_duration: chrono::Duration::seconds(row.get::<_, i64>(5)?),
                 notes: row.get(6)?,
                 created_at: row.get(7)?,
@@ -268,7 +286,8 @@ impl SessionQueries {
                 project_id: row.get(1)?,
                 start_time: row.get(2)?,
                 end_time: row.get(3)?,
-                context: row.get::<_, String>(4)?.parse().unwrap(),
+                context: row.get::<_, String>(4)?.parse()
+                    .map_err(|e| rusqlite::Error::InvalidColumnType(4, "context".to_string(), rusqlite::types::Type::Text))?,
                 paused_duration: chrono::Duration::seconds(row.get::<_, i64>(5)?),
                 notes: row.get(6)?,
                 created_at: row.get(7)?,
@@ -357,7 +376,8 @@ impl SessionQueries {
                 project_id: row.get(1)?,
                 start_time: row.get(2)?,
                 end_time: row.get(3)?,
-                context: row.get::<_, String>(4)?.parse().unwrap(),
+                context: row.get::<_, String>(4)?.parse()
+                    .map_err(|e| rusqlite::Error::InvalidColumnType(4, "context".to_string(), rusqlite::types::Type::Text))?,
                 paused_duration: chrono::Duration::seconds(row.get::<_, i64>(5)?),
                 notes: row.get(6)?,
                 created_at: row.get(7)?,
@@ -414,7 +434,8 @@ impl SessionQueries {
                 project_id: row.get(1)?,
                 start_time: row.get(2)?,
                 end_time: row.get(3)?,
-                context: row.get::<_, String>(4)?.parse().unwrap(),
+                context: row.get::<_, String>(4)?.parse()
+                    .map_err(|e| rusqlite::Error::InvalidColumnType(4, "context".to_string(), rusqlite::types::Type::Text))?,
                 paused_duration: chrono::Duration::seconds(row.get::<_, i64>(5)?),
                 notes: row.get(6)?,
                 created_at: row.get(7)?,
@@ -427,7 +448,8 @@ impl SessionQueries {
         }
         
         // Calculate merged session properties
-        let earliest_start = sessions.iter().map(|s| s.start_time).min().unwrap();
+        let earliest_start = sessions.iter().map(|s| s.start_time).min()
+            .ok_or_else(|| anyhow::anyhow!("No sessions found to determine earliest start time"))?;
         let latest_end = sessions.iter().filter_map(|s| s.end_time).max();
         let total_paused = sessions.iter().map(|s| s.paused_duration).fold(chrono::Duration::zero(), |acc, d| acc + d);
         let merged_project_id = target_project_id.unwrap_or(sessions[0].project_id);
@@ -548,13 +570,39 @@ impl SessionQueries {
             original_session.end_time,
             original_session.start_time,
             original_session.end_time,
-            Some(format!("Split into sessions: {}", new_session_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", ")))
+            Some(format!("Split into sessions: {:?}", new_session_ids))
         )?;
         
         // Delete original session
         Self::delete_session(conn, session_id)?;
         
         Ok(new_session_ids)
+    }
+
+    pub fn list_by_date_range(conn: &Connection, from: chrono::DateTime<chrono::Utc>, to: chrono::DateTime<chrono::Utc>) -> Result<Vec<Session>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, project_id, start_time, end_time, context, paused_duration, notes, created_at
+             FROM sessions 
+             WHERE start_time >= ?1 AND start_time <= ?2
+             ORDER BY start_time DESC"
+        )?;
+        
+        let sessions = stmt.query_map([from, to], |row| {
+            Ok(Session {
+                id: Some(row.get(0)?),
+                project_id: row.get(1)?,
+                start_time: row.get(2)?,
+                end_time: row.get(3)?,
+                context: row.get::<_, String>(4)?
+                    .parse()
+                    .map_err(|e| rusqlite::Error::InvalidColumnType(4, "context".to_string(), rusqlite::types::Type::Text))?,
+                paused_duration: chrono::Duration::seconds(row.get::<_, i64>(5)?),
+                notes: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })?.collect::<Result<Vec<_>, _>>()?;
+        
+        Ok(sessions)
     }
 }
 

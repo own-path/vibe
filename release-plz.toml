@@ -1,0 +1,9 @@
+[workspace]
+
+
+[[package]]
+name = "tempo-cli"
+# Run sync script after version bump but before commit
+post_version_bump_command = [
+    { cmd = "./scripts/sync_version.sh" }
+]

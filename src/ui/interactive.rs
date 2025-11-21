@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use crate::{
     models::{Project, Session},
-    ui::{formatter::Formatter, should_quit},
+    ui::formatter::Formatter,
     utils::ipc::IpcClient,
 };
 

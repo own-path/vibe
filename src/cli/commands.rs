@@ -2,12 +2,13 @@ use super::{Cli, Commands, ProjectAction, SessionAction, TagAction, ConfigAction
 use crate::utils::ipc::{IpcClient, IpcMessage, IpcResponse, get_socket_path, is_daemon_running};
 use crate::db::queries::{ProjectQueries, SessionQueries, TagQueries, SessionEditQueries};
 use crate::db::advanced_queries::{GoalQueries, GitBranchQueries, TimeEstimateQueries, InsightQueries, TemplateQueries, WorkspaceQueries};
-use crate::db::{Database, get_database_path};
+use crate::db::{Database, get_database_path, get_connection, get_pool_stats};
 use crate::models::{Project, Tag, Goal, TimeEstimate, ProjectTemplate, Workspace};
-use crate::utils::paths::{canonicalize_path, detect_project_name, get_git_hash, is_git_repository};
+use crate::utils::paths::{canonicalize_path, detect_project_name, get_git_hash, is_git_repository, validate_project_path};
+use crate::utils::validation::{validate_project_name, validate_project_description};
 use crate::utils::config::{load_config, save_config};
 use crate::cli::reports::ReportGenerator;
-use anyhow::Result;
+use anyhow::{Result, Context};
 use std::env;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -20,6 +21,7 @@ use crossterm::{execute, terminal::{disable_raw_mode, enable_raw_mode, EnterAlte
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 use tokio::runtime::Handle;
+
 
 pub async fn handle_command(cli: Cli) -> Result<()> {
     match cli.command {
@@ -97,6 +99,10 @@ pub async fn handle_command(cli: Cli) -> Result<()> {
 
         Commands::Compare { projects, from, to } => {
             compare_projects(projects, from, to).await
+        }
+
+        Commands::PoolStats => {
+            show_pool_stats().await
         }
 
         Commands::Estimate { action } => {
@@ -694,64 +700,57 @@ fn print_daemon_status(uptime: u64, active_session: Option<&crate::utils::ipc::S
 
 // Project management functions
 async fn init_project(name: Option<String>, path: Option<PathBuf>, description: Option<String>) -> Result<()> {
-    let project_path = path.unwrap_or_else(|| env::current_dir().unwrap());
-    let canonical_path = canonicalize_path(&project_path)?;
-    
-    let project_name = name.unwrap_or_else(|| detect_project_name(&canonical_path));
-    
-    // Initialize database
-    let db_path = get_database_path()?;
-    let db = Database::new(&db_path)?;
-    
-    // Check if project already exists
-    if let Some(existing) = ProjectQueries::find_by_path(&db.connection, &canonical_path)? {
-        println!("\x1b[33m⚠  Project already exists:\x1b[0m {}", existing.name);
-        return Ok(());
-    }
-    
-    // Get git hash if it's a git repository
-    let git_hash = if is_git_repository(&canonical_path) {
-        get_git_hash(&canonical_path)
+    // Validate inputs early
+    let validated_name = if let Some(n) = name.as_ref() {
+        Some(validate_project_name(n)
+            .with_context(|| format!("Invalid project name '{}'", n))?)
     } else {
         None
     };
     
-    // Create project
-    let mut project = Project::new(project_name.clone(), canonical_path.clone())
-        .with_git_hash(git_hash.clone())
-        .with_description(description.clone());
-    
-    // Save to database
-    let project_id = ProjectQueries::create(&db.connection, &project)?;
-    project.id = Some(project_id);
-    
-    // Create .tempo marker file
-    let marker_path = canonical_path.join(".tempo");
-    if !marker_path.exists() {
-        std::fs::write(&marker_path, format!("# Tempo time tracking project\nname: {}\n", project_name))?;
-    }
-    
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m         \x1b[1;37mProject Initialized\x1b[0m               \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!("\x1b[36m│\x1b[0m Name:     \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&project_name, 27));
-    println!("\x1b[36m│\x1b[0m Path:     \x1b[37m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&canonical_path.to_string_lossy(), 27));
-    if let Some(desc) = &description {
-        println!("\x1b[36m│\x1b[0m Desc:     \x1b[2;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(desc, 27));
-    }
-    if git_hash.is_some() {
-        println!("\x1b[36m│\x1b[0m Type:     \x1b[32mGit Repository\x1b[0m              \x1b[36m│\x1b[0m");
+    let validated_description = if let Some(d) = description.as_ref() {
+        Some(validate_project_description(d)
+            .with_context(|| "Invalid project description")?)
     } else {
-        println!("\x1b[36m│\x1b[0m Type:     \x1b[37mStandard Project\x1b[0m             \x1b[36m│\x1b[0m");
+        None
+    };
+    
+    let project_path = path.unwrap_or_else(|| {
+        env::current_dir().expect("Failed to get current directory")
+    });
+    
+    // Use secure path validation
+    let canonical_path = validate_project_path(&project_path)
+        .with_context(|| format!("Invalid project path: {}", project_path.display()))?;
+    
+    let project_name = validated_name.clone().unwrap_or_else(|| {
+        let detected = detect_project_name(&canonical_path);
+        validate_project_name(&detected).unwrap_or_else(|_| "project".to_string())
+    });
+    
+    // Get database connection from pool
+    let conn = match get_connection().await {
+        Ok(conn) => conn,
+        Err(_) => {
+            // Fallback to direct connection
+            let db_path = get_database_path()?;
+            let db = Database::new(&db_path)?;
+            return init_project_with_db(validated_name, Some(canonical_path), validated_description, &db.connection).await;
+        }
+    };
+    
+    // Check if project already exists
+    if let Some(existing) = ProjectQueries::find_by_path(conn.connection(), &canonical_path)? {
+        eprintln!("\x1b[33m⚠ Warning:\x1b[0m A project named '{}' already exists at this path.", existing.name);
+        eprintln!("Use 'tempo list' to see all projects or choose a different location.");
+        return Ok(());
     }
-    println!("\x1b[36m│\x1b[0m ID:       \x1b[90m{:<27}\x1b[0m \x1b[36m│\x1b[0m", project_id);
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!("\x1b[36m│\x1b[0m \x1b[32m✓ Project created successfully\x1b[0m          \x1b[36m│\x1b[0m");
-    println!("\x1b[36m│\x1b[0m \x1b[32m✓ .tempo marker file added\x1b[0m             \x1b[36m│\x1b[0m");
-    println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
-    println!("\x1b[36m│\x1b[0m \x1b[37mStart tracking:\x1b[0m                       \x1b[36m│\x1b[0m");
-    println!("\x1b[36m│\x1b[0m   \x1b[96mtempo session start\x1b[0m                 \x1b[36m│\x1b[0m");
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    
+    // Use the pooled connection to complete initialization
+    init_project_with_db(Some(project_name.clone()), Some(canonical_path.clone()), validated_description, conn.connection()).await?;
+    
+    println!("\x1b[32m✓ Success:\x1b[0m Project '{}' initialized at {}", project_name, canonical_path.display());
+    println!("Start tracking time with: \x1b[36mtempo start\x1b[0m");
     
     Ok(())
 }
@@ -845,8 +844,8 @@ async fn create_tag(name: String, color: Option<String>, description: Option<Str
     let db_path = get_database_path()?;
     let db = Database::new(&db_path)?;
     
-    // Create tag
-    let mut tag = Tag::new(name.clone());
+    // Create tag - use builder pattern to avoid cloning
+    let mut tag = Tag::new(name);
     if let Some(c) = color {
         tag = tag.with_color(c);
     }
@@ -913,7 +912,7 @@ async fn list_tags() -> Result<()> {
         let color_indicator = if let Some(color) = &tag.color {
             format!(" ({})", color)
         } else {
-            "".to_string()
+            String::new()
         };
         
         println!("\x1b[36m│\x1b[0m 🏷️  \x1b[1;33m{:<30}\x1b[0m \x1b[36m│\x1b[0m", 
@@ -1145,12 +1144,11 @@ async fn list_sessions(limit: Option<usize>, project_filter: Option<String>) -> 
             (Utc::now() - session.start_time).num_seconds() - session.paused_duration.num_seconds()
         };
         
-        let context_color = match session.context.to_string().as_str() {
-            "terminal" => "\x1b[96m",
-            "ide" => "\x1b[95m", 
-            "linked" => "\x1b[93m",
-            "manual" => "\x1b[94m",
-            _ => "\x1b[97m",
+        let context_color = match session.context {
+            crate::models::SessionContext::Terminal => "\x1b[96m",
+            crate::models::SessionContext::IDE => "\x1b[95m", 
+            crate::models::SessionContext::Linked => "\x1b[93m",
+            crate::models::SessionContext::Manual => "\x1b[94m",
         };
         
         println!("\x1b[36m│\x1b[0m {} \x1b[1;37m{:<32}\x1b[0m \x1b[36m│\x1b[0m", 
@@ -1160,10 +1158,10 @@ async fn list_sessions(limit: Option<usize>, project_filter: Option<String>) -> 
         println!("\x1b[36m│\x1b[0m    Duration: \x1b[32m{:<24}\x1b[0m \x1b[36m│\x1b[0m", format_duration_fancy(duration));
         println!("\x1b[36m│\x1b[0m    Context:  {}{:<24}\x1b[0m \x1b[36m│\x1b[0m", 
             context_color, 
-            session.context.to_string()
+            session.context
         );
         println!("\x1b[36m│\x1b[0m    Started:  \x1b[37m{:<24}\x1b[0m \x1b[36m│\x1b[0m", 
-            session.start_time.format("%Y-%m-%d %H:%M:%S").to_string()
+            session.start_time.format("%Y-%m-%d %H:%M:%S")
         );
         println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
     }
@@ -2203,8 +2201,10 @@ async fn add_project_to_workspace(workspace: String, project: String) -> Result<
     let project_obj = ProjectQueries::find_by_name(&db.connection, &project)?
         .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", project))?;
     
-    let workspace_id = workspace_obj.id.unwrap();
-    let project_id = project_obj.id.unwrap();
+    let workspace_id = workspace_obj.id
+        .ok_or_else(|| anyhow::anyhow!("Workspace ID is missing"))?;
+    let project_id = project_obj.id
+        .ok_or_else(|| anyhow::anyhow!("Project ID is missing"))?;
     
     if WorkspaceQueries::add_project(&db.connection, workspace_id, project_id)? {
         println!("\x1b[32m✓\x1b[0m Added project '\x1b[33m{}\x1b[0m' to workspace '\x1b[33m{}\x1b[0m'", project, workspace);
@@ -2227,8 +2227,10 @@ async fn remove_project_from_workspace(workspace: String, project: String) -> Re
     let project_obj = ProjectQueries::find_by_name(&db.connection, &project)?
         .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", project))?;
     
-    let workspace_id = workspace_obj.id.unwrap();
-    let project_id = project_obj.id.unwrap();
+    let workspace_id = workspace_obj.id
+        .ok_or_else(|| anyhow::anyhow!("Workspace ID is missing"))?;
+    let project_id = project_obj.id
+        .ok_or_else(|| anyhow::anyhow!("Project ID is missing"))?;
     
     if WorkspaceQueries::remove_project(&db.connection, workspace_id, project_id)? {
         println!("\x1b[32m✓\x1b[0m Removed project '\x1b[33m{}\x1b[0m' from workspace '\x1b[33m{}\x1b[0m'", project, workspace);
@@ -2247,7 +2249,8 @@ async fn list_workspace_projects(workspace: String) -> Result<()> {
     let workspace_obj = WorkspaceQueries::find_by_name(&db.connection, &workspace)?
         .ok_or_else(|| anyhow::anyhow!("Workspace '{}' not found", workspace))?;
     
-    let workspace_id = workspace_obj.id.unwrap();
+    let workspace_id = workspace_obj.id
+        .ok_or_else(|| anyhow::anyhow!("Workspace ID is missing"))?;
     let projects = WorkspaceQueries::list_projects(&db.connection, workspace_id)?;
     
     if projects.is_empty() {
@@ -2281,7 +2284,8 @@ async fn delete_workspace(workspace: String) -> Result<()> {
     let workspace_obj = WorkspaceQueries::find_by_name(&db.connection, &workspace)?
         .ok_or_else(|| anyhow::anyhow!("Workspace '{}' not found", workspace))?;
     
-    let workspace_id = workspace_obj.id.unwrap();
+    let workspace_id = workspace_obj.id
+        .ok_or_else(|| anyhow::anyhow!("Workspace ID is missing"))?;
     
     // Check if workspace has projects
     let projects = WorkspaceQueries::list_projects(&db.connection, workspace_id)?;
@@ -2397,4 +2401,87 @@ fn should_quit(event: crossterm::event::Event) -> bool {
         }
         _ => false,
     }
+}
+
+// Helper function for init_project with database connection
+async fn init_project_with_db(
+    name: Option<String>,
+    canonical_path: Option<PathBuf>,
+    description: Option<String>,
+    conn: &rusqlite::Connection,
+) -> Result<()> {
+    let canonical_path = canonical_path.ok_or_else(|| anyhow::anyhow!("Canonical path required"))?;
+    let project_name = name.unwrap_or_else(|| detect_project_name(&canonical_path));
+
+    // Check if project already exists
+    if let Some(existing) = ProjectQueries::find_by_path(conn, &canonical_path)? {
+        println!("\x1b[33m⚠  Project already exists:\x1b[0m {}", existing.name);
+        return Ok(());
+    }
+
+    // Get git hash if it's a git repository
+    let git_hash = if is_git_repository(&canonical_path) {
+        get_git_hash(&canonical_path)
+    } else {
+        None
+    };
+
+    // Create project
+    let mut project = Project::new(project_name.clone(), canonical_path.clone())
+        .with_git_hash(git_hash.clone())
+        .with_description(description.clone());
+
+    // Save to database
+    let project_id = ProjectQueries::create(conn, &project)?;
+    project.id = Some(project_id);
+
+    // Create .tempo marker file
+    let marker_path = canonical_path.join(".tempo");
+    if !marker_path.exists() {
+        std::fs::write(&marker_path, format!("# Tempo time tracking project\nname: {}\n", project_name))?;
+    }
+
+    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[36m│\x1b[0m         \x1b[1;37mProject Initialized\x1b[0m               \x1b[36m│\x1b[0m");
+    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[36m│\x1b[0m Name:        \x1b[33m{:<25}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&project_name, 25));
+    println!("\x1b[36m│\x1b[0m Path:        \x1b[37m{:<25}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(&canonical_path.display().to_string(), 25));
+    
+    if let Some(desc) = &description {
+        println!("\x1b[36m│\x1b[0m Description: \x1b[37m{:<25}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(desc, 25));
+    }
+    
+    if is_git_repository(&canonical_path) {
+        println!("\x1b[36m│\x1b[0m Git:         \x1b[32m{:<25}\x1b[0m \x1b[36m│\x1b[0m", "Repository detected");
+        if let Some(hash) = &git_hash {
+            println!("\x1b[36m│\x1b[0m Git Hash:    \x1b[37m{:<25}\x1b[0m \x1b[36m│\x1b[0m", truncate_string(hash, 25));
+        }
+    }
+    
+    println!("\x1b[36m│\x1b[0m ID:          \x1b[37m{:<25}\x1b[0m \x1b[36m│\x1b[0m", project_id);
+    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    
+    Ok(())
+}
+
+// Show database connection pool statistics
+async fn show_pool_stats() -> Result<()> {
+    match get_pool_stats() {
+        Ok(stats) => {
+            println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
+            println!("\x1b[36m│\x1b[0m        \x1b[1;37mDatabase Pool Statistics\x1b[0m          \x1b[36m│\x1b[0m");
+            println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+            println!("\x1b[36m│\x1b[0m Total Created:    \x1b[32m{:<19}\x1b[0m \x1b[36m│\x1b[0m", stats.total_connections_created);
+            println!("\x1b[36m│\x1b[0m Active:           \x1b[33m{:<19}\x1b[0m \x1b[36m│\x1b[0m", stats.active_connections);
+            println!("\x1b[36m│\x1b[0m Available in Pool:\x1b[37m{:<19}\x1b[0m \x1b[36m│\x1b[0m", stats.connections_in_pool);
+            println!("\x1b[36m│\x1b[0m Total Requests:   \x1b[37m{:<19}\x1b[0m \x1b[36m│\x1b[0m", stats.connection_requests);
+            println!("\x1b[36m│\x1b[0m Timeouts:         \x1b[31m{:<19}\x1b[0m \x1b[36m│\x1b[0m", stats.connection_timeouts);
+            println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+        }
+        Err(_) => {
+            println!("\x1b[33m⚠  Database pool not initialized or not available\x1b[0m");
+            println!("   Using direct database connections as fallback");
+        }
+    }
+    Ok(())
 }

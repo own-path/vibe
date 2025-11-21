@@ -1,8 +1,8 @@
 use anyhow::Result;
-use chrono::{DateTime, Utc, NaiveDate, TimeZone, Duration};
+use chrono::{DateTime, Utc, NaiveDate, TimeZone};
 use crate::db::{Database, initialize_database};
 use crate::utils::paths::get_data_dir;
-use rusqlite::{params, Row};
+use rusqlite::Row;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -201,7 +201,8 @@ fn parse_date(date_str: Option<String>) -> Result<Option<DateTime<Utc>>> {
         Some(date) => {
             let naive_date = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
                 .map_err(|_| anyhow::anyhow!("Invalid date format. Use YYYY-MM-DD"))?;
-            let datetime = Utc.from_utc_datetime(&naive_date.and_hms_opt(0, 0, 0).unwrap());
+            let datetime = Utc.from_utc_datetime(&naive_date.and_hms_opt(0, 0, 0)
+                .ok_or_else(|| anyhow::anyhow!("Failed to create datetime from date"))?);
             Ok(Some(datetime))
         }
         None => Ok(None),

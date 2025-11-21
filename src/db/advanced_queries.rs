@@ -282,7 +282,7 @@ impl GitBranchQueries {
                  WHERE project_id = ?2 AND branch_name = ?3"
             )?;
             stmt.execute(params![branch.total_time_seconds, branch.project_id, branch.branch_name])?;
-            Ok(existing.id.unwrap())
+            existing.id.ok_or_else(|| anyhow::anyhow!("Git branch ID missing after update"))
         } else {
             // Create new
             let mut stmt = conn.prepare(
@@ -316,7 +316,7 @@ impl GitBranchQueries {
 
     pub fn list_by_project(conn: &Connection, project_id: i64) -> Result<Vec<GitBranch>> {
         let mut stmt = conn.prepare(
-            "SELECT id, project_id, branch_name, first_seen, last_seen, total_time_seconds
+            "SELECT id, project_id, branch_name, first_seen, last_seen, total_time_seconds 
              FROM git_branches WHERE project_id = ?1 ORDER BY total_time_seconds DESC"
         )?;
         
@@ -359,7 +359,7 @@ impl TimeEstimateQueries {
 
     pub fn list_by_project(conn: &Connection, project_id: i64) -> Result<Vec<TimeEstimate>> {
         let mut stmt = conn.prepare(
-            "SELECT id, project_id, task_name, estimated_hours, actual_hours, status, due_date, completed_at, created_at, updated_at
+            "SELECT id, project_id, task_name, estimated_hours, actual_hours, status, due_date, completed_at, created_at, updated_at 
              FROM time_estimates WHERE project_id = ?1 ORDER BY created_at DESC"
         )?;
         
@@ -389,7 +389,7 @@ impl TimeEstimateQueries {
 
     pub fn record_actual(conn: &Connection, estimate_id: i64, hours: f64) -> Result<bool> {
         let mut stmt = conn.prepare(
-            "UPDATE time_estimates SET actual_hours = ?1, status = 'completed', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            "UPDATE time_estimates SET actual_hours = ?1, status = 'completed', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
              WHERE id = ?2"
         )?;
         let changes = stmt.execute(params![hours, estimate_id])?;
@@ -410,7 +410,7 @@ impl InsightQueries {
                 ELSE 0 END), 0) as total_seconds,
                 COUNT(*) as session_count
              FROM sessions
-             WHERE DATE(start_time) >= ?1 AND DATE(start_time) <= ?2 AND end_time IS NOT NULL"
+             WHERE DATE(start_time) >= ?1 AND DATE(start_time) <= ?2 AND end_time IS NOT NULL "
         )?;
         
         let (total_seconds, session_count): (i64, i64) = stmt.query_row([week_start, week_end], |row| {
@@ -446,7 +446,7 @@ impl InsightQueries {
                 ELSE 0 END), 0) as total_seconds,
                 COUNT(*) as session_count
              FROM sessions
-             WHERE DATE(start_time) >= ?1 AND DATE(start_time) <= ?2 AND end_time IS NOT NULL"
+             WHERE DATE(start_time) >= ?1 AND DATE(start_time) <= ?2 AND end_time IS NOT NULL "
         )?;
         
         let (total_seconds, session_count): (i64, i64) = stmt.query_row([month_start, month_end], |row| {

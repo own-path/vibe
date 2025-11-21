@@ -142,6 +142,9 @@ pub enum Commands {
         to: Option<String>,
     },
 
+    #[command(about = "Show database pool statistics")]
+    PoolStats,
+
     #[command(about = "Time estimation tracking")]
     Estimate {
         #[command(subcommand)]

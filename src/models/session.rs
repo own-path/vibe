@@ -82,7 +82,7 @@ impl Session {
         if self.end_time.is_some() {
             return Err(anyhow::anyhow!("Session is already ended"));
         }
-        
+
         self.end_time = Some(Utc::now());
         Ok(())
     }
@@ -108,7 +108,8 @@ impl Session {
     }
 
     pub fn active_duration(&self) -> Option<Duration> {
-        self.total_duration().map(|total| total - self.paused_duration)
+        self.total_duration()
+            .map(|total| total - self.paused_duration)
     }
 
     pub fn current_duration(&self) -> Duration {
@@ -133,7 +134,9 @@ impl Session {
 
         let total = self.current_duration();
         if self.paused_duration > total {
-            return Err(anyhow::anyhow!("Paused duration cannot exceed total duration"));
+            return Err(anyhow::anyhow!(
+                "Paused duration cannot exceed total duration"
+            ));
         }
 
         Ok(())
@@ -175,5 +178,68 @@ impl SessionEdit {
     pub fn with_reason(mut self, reason: Option<String>) -> Self {
         self.edit_reason = reason;
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_session_new() {
+        let session = Session::new(1, SessionContext::Terminal);
+        assert_eq!(session.project_id, 1);
+        assert_eq!(session.context, SessionContext::Terminal);
+        assert!(session.end_time.is_none());
+        assert_eq!(session.paused_duration, Duration::zero());
+    }
+
+    #[test]
+    fn test_session_end() {
+        let mut session = Session::new(1, SessionContext::IDE);
+        assert!(session.is_active());
+
+        let result = session.end_session();
+        assert!(result.is_ok());
+        assert!(!session.is_active());
+        assert!(session.end_time.is_some());
+
+        // Cannot end twice
+        let result = session.end_session();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_session_duration() {
+        let mut session = Session::new(1, SessionContext::Manual);
+        let start = Utc::now() - Duration::hours(1);
+        session.start_time = start;
+
+        // Active duration (approx 1 hour)
+        let duration = session.current_duration();
+        assert!(duration >= Duration::hours(1));
+
+        // Add pause
+        session.add_pause_duration(Duration::minutes(30));
+        let active = session.current_active_duration();
+        // Should be approx 30 mins (1h total - 30m pause)
+        assert!(active >= Duration::minutes(29) && active <= Duration::minutes(31));
+    }
+
+    #[test]
+    fn test_session_validation() {
+        let mut session = Session::new(1, SessionContext::Terminal);
+
+        // Valid case
+        assert!(session.validate().is_ok());
+
+        // Invalid: End before start
+        session.end_time = Some(session.start_time - Duration::seconds(1));
+        assert!(session.validate().is_err());
+
+        // Invalid: Pause > Total
+        session.end_time = Some(session.start_time + Duration::minutes(10));
+        session.paused_duration = Duration::minutes(20);
+        assert!(session.validate().is_err());
     }
 }

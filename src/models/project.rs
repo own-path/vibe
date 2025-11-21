@@ -105,3 +105,52 @@ impl LinkedProject {
         self.member_projects.retain(|p| p.id != Some(project_id));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_project_new() {
+        let path = PathBuf::from("/tmp/test-project");
+        let project = Project::new("Test Project".to_string(), path.clone());
+
+        assert_eq!(project.name, "Test Project");
+        assert_eq!(project.path, path);
+        assert!(!project.is_archived);
+        assert!(project.git_hash.is_none());
+    }
+
+    #[test]
+    fn test_project_archive_unarchive() {
+        let mut project = Project::new("Test".to_string(), PathBuf::from("/tmp"));
+
+        assert!(!project.is_archived);
+
+        project.archive();
+        assert!(project.is_archived);
+
+        project.unarchive();
+        assert!(!project.is_archived);
+    }
+
+    #[test]
+    fn test_project_update_path() {
+        let mut project = Project::new("Test".to_string(), PathBuf::from("/tmp/old"));
+        let new_path = PathBuf::from("/tmp/new");
+
+        project.update_path(new_path.clone());
+        assert_eq!(project.path, new_path);
+    }
+
+    #[test]
+    fn test_linked_project_management() {
+        let mut linked = LinkedProject::new("Meta Project".to_string());
+        let p1 = Project::new("P1".to_string(), PathBuf::from("/p1"))
+            .with_git_hash(Some("hash1".to_string()));
+
+        linked.add_project(p1.clone());
+        assert_eq!(linked.member_projects.len(), 1);
+        assert_eq!(linked.member_projects[0].name, "P1");
+    }
+}

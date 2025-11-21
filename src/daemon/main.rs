@@ -1,23 +1,26 @@
 use anyhow::Result;
-use log::{info, error, warn};
+use log::{error, info, warn};
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use tokio::signal;
+use tokio::sync::RwLock;
 
 mod server;
 mod state;
+mod project_cache;
 
 use server::DaemonServer;
-use state::{DaemonState, start_idle_checker};
-use tempo::db::initialize_database;
-use tempo::utils::paths::get_data_dir;
-use tempo::utils::ipc::{get_socket_path, write_pid_file, remove_pid_file};
+use state::{start_idle_checker, DaemonState};
+use tempo_cli::db::{initialize_database, initialize_pool, get_connection, Database};
+use tempo_cli::models::Config;
+use tempo_cli::utils::get_config_dir;
+use tempo_cli::utils::ipc::{get_socket_path, remove_pid_file, write_pid_file};
+use tempo_cli::utils::paths::get_data_dir;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
     env_logger::init();
-    
+
     info!("Starting tempo daemon...");
 
     // Write PID file
@@ -29,7 +32,13 @@ async fn main() -> Result<()> {
     // Ensure cleanup on exit
     let _cleanup_guard = CleanupGuard;
 
-    // Initialize database
+    // Initialize database pool
+    if let Err(e) = initialize_pool() {
+        error!("Failed to initialize database pool: {}", e);
+        return Err(e);
+    }
+    
+    // Get a connection for daemon state initialization
     let db_path = get_data_dir()?.join("data.db");
     let db = match initialize_database(&db_path) {
         Ok(db) => db,
@@ -74,7 +83,9 @@ async fn main() -> Result<()> {
     });
 
     let shutdown_signal = tokio::spawn(async {
-        signal::ctrl_c().await.expect("Failed to install CTRL+C signal handler");
+        signal::ctrl_c()
+            .await
+            .expect("Failed to install CTRL+C signal handler");
         info!("Received CTRL+C, shutting down...");
     });
 
@@ -84,7 +95,7 @@ async fn main() -> Result<()> {
         }
         _ = shutdown_signal => {
             info!("Graceful shutdown initiated");
-            
+
             // Stop any active sessions
             let mut state_guard = shared_state.write().await;
             if let Err(e) = state_guard.stop_session().await {
@@ -104,7 +115,7 @@ impl Drop for CleanupGuard {
         if let Err(e) = remove_pid_file() {
             eprintln!("Failed to remove PID file: {}", e);
         }
-        
+
         // Remove socket file
         if let Ok(socket_path) = get_socket_path() {
             if socket_path.exists() {

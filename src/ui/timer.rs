@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Utc, Duration};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     backend::Backend,
@@ -9,11 +9,10 @@ use ratatui::{
     widgets::{Block, Borders, Gauge, Paragraph, Wrap},
     Frame, Terminal,
 };
-use std::time::Duration;
+use std::time::Duration as StdDuration;
 
 use crate::{
-    models::Session,
-    utils::ipc::{IpcClient, IpcMessage, IpcResponse},
+    utils::ipc::IpcClient,
     ui::formatter::Formatter,
 };
 
@@ -21,7 +20,7 @@ pub struct InteractiveTimer {
     client: IpcClient,
     start_time: Option<DateTime<Utc>>,
     paused_at: Option<DateTime<Utc>>,
-    total_paused: chrono::Duration,
+    total_paused: Duration,
     target_duration: i64, // in seconds
     show_milestones: bool,
 }
@@ -42,7 +41,7 @@ impl InteractiveTimer {
             client,
             start_time: None,
             paused_at: None,
-            total_paused: chrono::Duration::zero(),
+            total_paused: Duration::zero(),
             target_duration: 25 * 60, // Default 25 minutes (Pomodoro)
             show_milestones: true,
         })
@@ -58,7 +57,7 @@ impl InteractiveTimer {
             })?;
 
             // Handle input
-            if event::poll(Duration::from_millis(100))? {
+            if event::poll(StdDuration::from_millis(100))? {
                 match event::read()? {
                     Event::Key(key) if key.kind == KeyEventKind::Press => {
                         match key.code {

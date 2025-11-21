@@ -47,8 +47,14 @@ cargo install tempo-cli
 
 # Or build from source
 git clone https://github.com/own-path/vibe.git
-cd vibe && cargo install --path .
+cd vibe
+./install.sh
 ```
+
+### Compatibility Note
+For the best experience with the TUI dashboard, we recommend using a terminal that supports **TrueColor** (24-bit color) and a **Nerd Font** (for icons).
+- **Colors**: If your terminal doesn't support TrueColor, the interface will degrade gracefully to standard ANSI colors.
+- **Icons**: If you see missing characters (boxes), install a [Nerd Font](https://www.nerdfonts.com/) like "JetBrainsMono Nerd Font" or "FiraCode Nerd Font".
 
 ---
 
