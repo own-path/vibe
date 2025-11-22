@@ -13,7 +13,7 @@ use tempo_cli::utils::paths::{
     canonicalize_path, detect_project_name, get_git_hash, has_tempo_marker, is_git_repository,
 };
 use tokio::sync::RwLock;
-use tokio::time::{sleep, Duration as TokioDuration};
+use tokio::time::Duration as TokioDuration;
 
 use super::project_cache::ProjectCache;
 
@@ -352,7 +352,7 @@ impl DaemonState {
     fn update_activity_score(&mut self) {
         if let Some(session) = &mut self.active_session {
             let now = Utc::now();
-            let session_duration = (now - session.start_time).num_seconds();
+            let _session_duration = (now - session.start_time).num_seconds();
             let recent_events = session
                 .activity_events
                 .iter()

@@ -13,11 +13,9 @@ use std::time::Duration;
 use crate::{
     models::{Project, Session},
     ui::formatter::Formatter,
-    utils::ipc::IpcClient,
 };
 
 pub struct InteractiveViewer {
-    client: IpcClient,
     projects: Vec<Project>,
     sessions: Vec<Session>,
     selected_project: Option<usize>,
@@ -26,9 +24,7 @@ pub struct InteractiveViewer {
 
 impl InteractiveViewer {
     pub fn new() -> Result<Self> {
-        let client = IpcClient::new()?;
         let mut viewer = Self {
-            client,
             projects: Vec::new(),
             sessions: Vec::new(),
             selected_project: None,

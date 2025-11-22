@@ -3,13 +3,9 @@ use anyhow::Result;
 use log::{debug, error, info, warn};
 use std::path::PathBuf;
 use tempo_cli::db::queries::{ProjectQueries, SessionQueries};
-use tempo_cli::db::Database;
-use tempo_cli::models::{Project, Session, SessionContext};
-use tempo_cli::utils::get_config_dir;
 use tempo_cli::utils::ipc::{
     read_ipc_message, write_ipc_response, IpcMessage, IpcResponse, IpcServer,
 };
-use tokio::net::unix::SocketAddr;
 use tokio::net::UnixStream;
 
 pub struct DaemonServer {

@@ -11,15 +11,13 @@ pub mod template;
 pub mod time_estimate;
 pub mod workspace;
 
-pub use calendar_event::{CalendarEvent, CalendarType};
-pub use client_report::{ClientReport, ReportStatus};
 pub use config::Config;
 pub use git_branch::GitBranch;
 pub use goal::{Goal, GoalStatus};
-pub use insight::{InsightData, InsightType, ProductivityInsight, TeamInsight};
+pub use insight::InsightData;
 pub use project::Project;
 pub use session::{Session, SessionContext, SessionEdit};
 pub use tag::Tag;
-pub use template::{ProjectTemplate, TemplateGoal};
+pub use template::ProjectTemplate;
 pub use time_estimate::{EstimateStatus, TimeEstimate};
 pub use workspace::Workspace;

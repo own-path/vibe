@@ -1,6 +1,6 @@
 use anyhow::Result;
 use chrono::Local;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use log::debug;
 use ratatui::{
     backend::Backend,
@@ -10,161 +10,323 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
     Frame, Terminal,
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::{
-    db::queries::ProjectQueries,
-    db::{get_database_path, Database},
     models::{Project, Session},
     ui::formatter::Formatter,
-    ui::widgets::{ColorScheme, Spinner, Throbber},
-    utils::ipc::{get_socket_path, is_daemon_running, IpcClient, IpcMessage, IpcResponse},
+    ui::widgets::{ColorScheme, Spinner},
+    utils::ipc::{is_daemon_running, IpcClient, IpcMessage, IpcResponse},
 };
 
 pub struct Dashboard {
     client: IpcClient,
-    show_project_switcher: bool,
+    current_session: Option<Session>,
+    current_project: Option<Project>,
+    daily_stats: (i64, i64, i64),
     available_projects: Vec<Project>,
     selected_project_index: usize,
+    show_project_switcher: bool,
     spinner: Spinner,
-    throbber: Throbber,
+    last_update: Instant,
 }
 
 impl Dashboard {
     pub async fn new() -> Result<Self> {
-        let socket_path = get_socket_path()?;
-        let client = if socket_path.exists() {
-            match IpcClient::connect(&socket_path).await {
-                Ok(client) => client,
-                Err(_) => IpcClient::new()?,
-            }
-        } else {
-            IpcClient::new()?
-        };
-
+        let client = IpcClient::new()?;
         Ok(Self {
             client,
-            show_project_switcher: false,
+            current_session: None,
+            current_project: None,
+            daily_stats: (0, 0, 0),
             available_projects: Vec::new(),
             selected_project_index: 0,
+            show_project_switcher: false,
             spinner: Spinner::new(),
-            throbber: Throbber::new(),
+            last_update: Instant::now(),
         })
     }
 
     pub async fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<()> {
-        let mut heartbeat_counter = 0;
-
         loop {
-            // Send activity heartbeat every 30 iterations (3 seconds at 100ms intervals)
-            if heartbeat_counter >= 30 {
-                if let Err(e) = self.send_activity_heartbeat().await {
-                    // Ignore heartbeat errors to avoid interrupting the dashboard
-                    debug!("Heartbeat error: {}", e);
-                }
-                heartbeat_counter = 0;
-            }
-            heartbeat_counter += 1;
+            // Update state
+            self.update_state().await?;
 
-            // Tick animations
-            self.spinner.next();
-            self.throbber.next();
+            terminal.draw(|f| self.render_dashboard_sync(f))?;
 
-            // Get current status
-            let current_session = self.get_current_session().await?;
-            let current_project = if let Some(ref session) = current_session {
-                self.get_project_by_session(session).await?
-            } else {
-                None
-            };
-            let daily_stats = self.get_today_stats().await.unwrap_or((0, 0, 0));
-            let session_metrics = self.get_session_metrics().await.unwrap_or(None);
-
-            terminal.draw(|f| {
-                self.render_dashboard_sync(
-                    f,
-                    &current_session,
-                    &current_project,
-                    &daily_stats,
-                    &session_metrics,
-                );
-            })?;
-
-            // Handle input
             if event::poll(Duration::from_millis(100))? {
                 match event::read()? {
-                    Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc => {
-                            if self.show_project_switcher {
-                                self.show_project_switcher = false;
-                            } else {
+                    Event::Key(key) if key.kind == KeyEventKind::Press => {
+                        if self.show_project_switcher {
+                            self.handle_project_switcher_input(key).await?;
+                        } else {
+                            // Handle global exit here
+                            if let KeyCode::Char('q') | KeyCode::Esc = key.code {
                                 break;
                             }
+                            self.handle_dashboard_input(key).await?;
                         }
-                        KeyCode::Char('p') => {
-                            self.toggle_project_switcher().await?;
-                        }
-                        KeyCode::Up => {
-                            if self.show_project_switcher {
-                                self.navigate_projects(-1);
-                            }
-                        }
-                        KeyCode::Down => {
-                            if self.show_project_switcher {
-                                self.navigate_projects(1);
-                            }
-                        }
-                        KeyCode::Enter => {
-                            if self.show_project_switcher {
-                                self.switch_to_selected_project().await?;
-                            }
-                        }
-                        _ => {}
-                    },
+                    }
                     _ => {}
                 }
             }
         }
+        Ok(())
+    }
+    async fn update_state(&mut self) -> Result<()> {
+        // Send activity heartbeat (throttled)
+        if self.last_update.elapsed() >= Duration::from_secs(3) {
+            if let Err(e) = self.send_activity_heartbeat().await {
+                debug!("Heartbeat error: {}", e);
+            }
+            self.last_update = Instant::now();
+        }
+
+        // Tick animations
+        self.spinner.next();
+
+        // Get current status
+        self.current_session = self.get_current_session().await?;
+
+        // Clone session to avoid borrow conflict
+        let session_clone = self.current_session.clone();
+        if let Some(session) = session_clone {
+            self.current_project = self.get_project_by_session(&session).await?;
+        } else {
+            self.current_project = None;
+        }
+
+        self.daily_stats = self.get_today_stats().await.unwrap_or((0, 0, 0));
 
         Ok(())
     }
 
-    fn render_dashboard_sync(
-        &self,
-        f: &mut Frame,
-        current_session: &Option<Session>,
-        current_project: &Option<Project>,
-        daily_stats: &(i64, i64, i64),
-        session_metrics: &Option<crate::utils::ipc::SessionMetrics>,
-    ) {
-        // Modern clean layout: Minimal, focused, professional
+    async fn handle_dashboard_input(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            // 'q' and 'Esc' are handled in run()
+            KeyCode::Char('p') => {
+                self.refresh_projects().await?;
+                self.show_project_switcher = true;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn handle_project_switcher_input(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            KeyCode::Esc => {
+                self.show_project_switcher = false;
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.navigate_projects(-1);
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.navigate_projects(1);
+            }
+            KeyCode::Enter => {
+                self.switch_to_selected_project().await?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+    fn render_dashboard_sync(&mut self, f: &mut Frame) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(1), // Top bar (Logo/Status)
-                Constraint::Length(1), // Spacer
-                Constraint::Length(7), // Main Status / Activity Stream (reduced from 10)
-                Constraint::Length(1), // Spacer
-                Constraint::Min(0),    // Details / Metrics (flexible)
-                Constraint::Length(1), // Bottom bar (Input/Help)
+                Constraint::Length(3),  // Header
+                Constraint::Length(1),  // Spacer
+                Constraint::Length(10), // Active Session Panel
+                Constraint::Length(1),  // Spacer
+                Constraint::Length(3),  // Quick Stats Header
+                Constraint::Length(5),  // Quick Stats Grid
+                Constraint::Length(1),  // Spacer
+                Constraint::Min(10),    // Recent Projects & Timeline
+                Constraint::Length(1),  // Bottom bar
             ])
             .split(f.size());
 
-        // Top Bar
-        self.render_top_bar(f, chunks[0]);
+        // Header
+        self.render_header(f, chunks[0]);
 
-        // Main Status Area (The "Stream")
-        self.render_main_status(f, chunks[2], current_session, current_project);
+        let daily_stats = self.get_daily_stats();
+        let current_session = &self.current_session;
+        let current_project = &self.current_project;
 
-        // Details / Metrics Area
-        self.render_metrics_area(f, chunks[4], daily_stats, session_metrics);
+        // 1. Active Session Panel
+        self.render_active_session_panel(f, chunks[2], current_session, current_project);
 
-        // Bottom Bar
-        self.render_bottom_bar(f, chunks[5]);
+        // 2. Quick Stats
+        self.render_quick_stats(f, chunks[4], chunks[5], daily_stats);
+
+        // 3. Recent Projects & Timeline
+        self.render_projects_and_timeline(f, chunks[5]);
+
+        // 4. Bottom Bar
+        self.render_bottom_bar(f, chunks[6]);
 
         // Project switcher overlay
         if self.show_project_switcher {
             self.render_project_switcher(f, f.size());
+        }
+    }
+
+    fn render_active_session_panel(
+        &self,
+        f: &mut Frame,
+        area: Rect,
+        session: &Option<Session>,
+        project: &Option<Project>,
+    ) {
+        let block = Block::default().style(Style::default().bg(ColorScheme::CLEAN_BG));
+
+        f.render_widget(block, area);
+
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1), // "Active Session" label
+                Constraint::Length(2), // Project Name & State
+                Constraint::Length(1), // Spacer
+                Constraint::Length(3), // Large Timer
+            ])
+            .margin(1)
+            .split(area);
+
+        // Label
+        f.render_widget(
+            Paragraph::new("Active Session").style(
+                Style::default()
+                    .fg(ColorScheme::GRAY_TEXT)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            layout[0],
+        );
+
+        if let Some(session) = session {
+            let project_name = project
+                .as_ref()
+                .map(|p| p.name.as_str())
+                .unwrap_or("Unknown Project");
+
+            // Project Name & State
+            let info_layout = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+                .split(layout[1]);
+
+            f.render_widget(
+                Paragraph::new(project_name).style(
+                    Style::default()
+                        .fg(ColorScheme::GRAY_TEXT)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                info_layout[0],
+            );
+
+            f.render_widget(
+                Paragraph::new("State: ACTIVE")
+                    .alignment(Alignment::Right)
+                    .style(Style::default().fg(ColorScheme::GRAY_TEXT)),
+                info_layout[1],
+            );
+
+            // Timer
+            let now = Local::now();
+            let elapsed_seconds = (now.timestamp() - session.start_time.timestamp())
+                - session.paused_duration.num_seconds();
+            let duration_str = Formatter::format_duration(elapsed_seconds);
+
+            f.render_widget(
+                Paragraph::new(duration_str)
+                    .alignment(Alignment::Center)
+                    .style(
+                        Style::default()
+                            .fg(ColorScheme::WHITE_TEXT)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                layout[3],
+            );
+        } else {
+            // Idle State
+            f.render_widget(
+                Paragraph::new("No Active Session")
+                    .style(Style::default().fg(ColorScheme::GRAY_TEXT)),
+                layout[1],
+            );
+            f.render_widget(
+                Paragraph::new("--:--:--")
+                    .alignment(Alignment::Center)
+                    .style(
+                        Style::default()
+                            .fg(ColorScheme::GRAY_TEXT)
+                            .add_modifier(Modifier::DIM),
+                    ),
+                layout[3],
+            );
+        }
+    }
+
+    fn render_quick_stats(
+        &self,
+        f: &mut Frame,
+        header_area: Rect,
+        grid_area: Rect,
+        daily_stats: &(i64, i64, i64),
+    ) {
+        let (sessions_count, total_seconds, _avg_seconds) = *daily_stats;
+
+        // Header
+        f.render_widget(
+            Paragraph::new("Quick Stats").style(
+                Style::default()
+                    .fg(ColorScheme::WHITE_TEXT)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            header_area,
+        );
+
+        // Grid
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(25),
+                Constraint::Percentage(25),
+                Constraint::Percentage(25),
+                Constraint::Percentage(25),
+            ])
+            .split(grid_area);
+
+        let stats = [
+            ("Today", Formatter::format_duration(total_seconds)),
+            ("This Week", "12h 30m".to_string()), // Placeholder for now
+            ("Active", sessions_count.to_string()),
+            ("Projects", self.available_projects.len().to_string()),
+        ];
+
+        for (i, (label, value)) in stats.iter().enumerate() {
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(ColorScheme::GRAY_TEXT))
+                .style(Style::default().bg(ColorScheme::CLEAN_BG));
+
+            let content = Paragraph::new(vec![
+                Line::from(Span::styled(
+                    *label,
+                    Style::default().fg(ColorScheme::GRAY_TEXT),
+                )),
+                Line::from(Span::styled(
+                    value.as_str(),
+                    Style::default()
+                        .fg(ColorScheme::WHITE_TEXT)
+                        .add_modifier(Modifier::BOLD),
+                )),
+            ])
+            .block(block)
+            .alignment(Alignment::Center);
+
+            f.render_widget(content, cols[i]);
         }
     }
 
@@ -202,242 +364,88 @@ impl Dashboard {
         f.render_widget(help_paragraph, area);
     }
 
-    fn render_top_bar(&self, f: &mut Frame, area: Rect) {
-        let title_text = vec![
-            Span::styled(
-                "Tempo",
-                Style::default()
-                    .fg(ColorScheme::CLEAN_ACCENT)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" "),
-            Span::styled("CLI", Style::default().fg(ColorScheme::GRAY_TEXT)),
-        ];
-
-        let title = Paragraph::new(Line::from(title_text)).alignment(Alignment::Left);
-
-        f.render_widget(title, area);
-
-        // Right side status
-        let status_text = if is_daemon_running() {
-            Span::styled(
-                "Daemon Active",
-                Style::default().fg(ColorScheme::CLEAN_GREEN),
-            )
-        } else {
-            Span::styled(
-                "Daemon Offline",
-                Style::default().fg(ColorScheme::NEON_PINK),
-            )
-        };
-
-        let status = Paragraph::new(Line::from(status_text)).alignment(Alignment::Right);
-
-        f.render_widget(status, area);
-    }
-
-    fn render_main_status(
-        &self,
-        f: &mut Frame,
-        area: Rect,
-        session: &Option<Session>,
-        project: &Option<Project>,
-    ) {
-        let block = ColorScheme::clean_block();
-
-        if let Some(session) = session {
-            let now = Local::now();
-            let elapsed_seconds = (now.timestamp() - session.start_time.timestamp())
-                - session.paused_duration.num_seconds();
-
-            let project_name = project
-                .as_ref()
-                .map(|p| p.name.as_str())
-                .unwrap_or("Unknown Project");
-
-            let status_lines = vec![
-                Line::from(vec![
-                    Span::styled(
-                        session.context.to_string(),
-                        Style::default().fg(ColorScheme::CLEAN_ACCENT),
-                    ),
-                    Span::styled(
-                        "Tracking ",
-                        Style::default()
-                            .fg(ColorScheme::CLEAN_BLUE)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled(project_name, Style::default().fg(ColorScheme::WHITE_TEXT)),
-                ]),
-                Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled("L ", Style::default().fg(ColorScheme::GRAY_TEXT)),
-                    Span::raw("Context: "),
-                    Span::styled(
-                        session.context.to_string(),
-                        Style::default().fg(ColorScheme::CLEAN_ACCENT),
-                    ),
-                ]),
-                Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled("L ", Style::default().fg(ColorScheme::GRAY_TEXT)),
-                    Span::raw("Duration: "),
-                    Span::styled(
-                        Formatter::format_duration(elapsed_seconds),
-                        Style::default().fg(ColorScheme::CLEAN_GREEN),
-                    ),
-                    Span::raw(" "),
-                    Span::styled(
-                        self.throbber.current(),
-                        Style::default().fg(ColorScheme::GRAY_TEXT),
-                    ),
-                ]),
-            ];
-
-            let paragraph = Paragraph::new(status_lines).block(block);
-            f.render_widget(paragraph, area);
-        } else {
-            let idle_lines = vec![
-                Line::from(vec![
-                    Span::styled("- ", Style::default().fg(ColorScheme::GRAY_TEXT)),
-                    Span::styled("Idle", Style::default().fg(ColorScheme::GRAY_TEXT)),
-                ]),
-                Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled("L ", Style::default().fg(ColorScheme::GRAY_TEXT)),
-                    Span::raw("Waiting for command..."),
-                ]),
-                Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled("L ", Style::default().fg(ColorScheme::GRAY_TEXT)),
-                    Span::raw("Try: "),
-                    Span::styled(
-                        "tempo start <project>",
-                        Style::default().fg(ColorScheme::CLEAN_ACCENT),
-                    ),
-                ]),
-            ];
-
-            let paragraph = Paragraph::new(idle_lines).block(block);
-            f.render_widget(paragraph, area);
-        }
-    }
-
-    fn render_metrics_area(
-        &self,
-        f: &mut Frame,
-        area: Rect,
-        daily_stats: &(i64, i64, i64),
-        session_metrics: &Option<crate::utils::ipc::SessionMetrics>,
-    ) {
-        let (sessions_count, total_seconds, avg_seconds) = *daily_stats;
-
+    fn render_projects_and_timeline(&self, f: &mut Frame, area: Rect) {
         let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(2), // Header
+                Constraint::Min(5),    // Project List
+                Constraint::Length(2), // Timeline Header
+                Constraint::Length(3), // Timeline Bar
+            ])
             .split(area);
 
-        // Daily Stats Column
-        let stats_lines = vec![
-            Line::from(Span::styled(
-                "Daily Summary",
-                Style::default()
-                    .fg(ColorScheme::GRAY_TEXT)
-                    .add_modifier(Modifier::UNDERLINED),
-            )),
-            Line::from(""),
-            Line::from(vec![
-                Span::raw("Sessions: "),
-                Span::styled(
-                    sessions_count.to_string(),
-                    Style::default().fg(ColorScheme::WHITE_TEXT),
-                ),
-            ]),
-            Line::from(vec![
-                Span::raw("Total:    "),
-                Span::styled(
-                    Formatter::format_duration(total_seconds),
-                    Style::default().fg(ColorScheme::WHITE_TEXT),
-                ),
-            ]),
-            Line::from(vec![
-                Span::raw("Average:  "),
-                Span::styled(
-                    Formatter::format_duration(avg_seconds),
-                    Style::default().fg(ColorScheme::WHITE_TEXT),
-                ),
-            ]),
-        ];
-
+        // Projects Header
         f.render_widget(
-            Paragraph::new(stats_lines).block(ColorScheme::clean_block()),
+            Paragraph::new("Recent Projects").style(
+                Style::default()
+                    .fg(ColorScheme::WHITE_TEXT)
+                    .add_modifier(Modifier::BOLD),
+            ),
             chunks[0],
         );
 
-        // Session Metrics Column
-        if let Some(metrics) = session_metrics {
-            let efficiency = self.calculate_efficiency_percentage(metrics);
-            let activity_score = metrics.activity_score * 100.0;
+        // Project List (Mock data for visual alignment)
+        let projects = &self.available_projects;
+        let items: Vec<ListItem> = projects
+            .iter()
+            .take(5)
+            .map(|p| {
+                let content = format!(
+                    "{:<20} {:<10} {:<10} {:<10}",
+                    p.name,
+                    "0h 00m", // Placeholder
+                    "0h 00m", // Placeholder
+                    "Today"   // Placeholder
+                );
+                ListItem::new(content).style(Style::default().fg(ColorScheme::GRAY_TEXT))
+            })
+            .collect();
 
-            let metrics_lines = vec![
-                Line::from(Span::styled(
-                    "Current Session",
-                    Style::default()
-                        .fg(ColorScheme::GRAY_TEXT)
-                        .add_modifier(Modifier::UNDERLINED),
-                )),
-                Line::from(""),
-                Line::from(vec![
-                    Span::raw("Activity:   "),
-                    Span::styled(
-                        format!("{:.0}%", activity_score),
-                        Style::default().fg(if activity_score > 80.0 {
-                            ColorScheme::CLEAN_GREEN
-                        } else {
-                            ColorScheme::CLEAN_ACCENT
-                        }),
-                    ),
-                ]),
-                Line::from(vec![
-                    Span::raw("Efficiency: "),
-                    Span::styled(
-                        format!("{:.0}%", efficiency),
-                        Style::default().fg(if efficiency > 80.0 {
-                            ColorScheme::CLEAN_GREEN
-                        } else {
-                            ColorScheme::CLEAN_ACCENT
-                        }),
-                    ),
-                ]),
-            ];
+        // Header row
+        let header = Paragraph::new(format!(
+            "{:<20} {:<10} {:<10} {:<10}",
+            "Name", "Today", "Total", "Last Active"
+        ))
+        .style(
+            Style::default()
+                .fg(ColorScheme::GRAY_TEXT)
+                .add_modifier(Modifier::UNDERLINED),
+        );
 
-            f.render_widget(
-                Paragraph::new(metrics_lines).block(ColorScheme::clean_block()),
-                chunks[1],
-            );
-        } else {
-            let no_metrics_lines = vec![
-                Line::from(Span::styled(
-                    "Current Session",
-                    Style::default()
-                        .fg(ColorScheme::GRAY_TEXT)
-                        .add_modifier(Modifier::UNDERLINED),
-                )),
-                Line::from(""),
-                Line::from(Span::styled(
-                    "No active session metrics.",
-                    Style::default().fg(ColorScheme::GRAY_TEXT),
-                )),
-                Line::from(Span::styled(
-                    "Start a session to see real-time data.",
-                    Style::default().fg(ColorScheme::GRAY_TEXT),
-                )),
-            ];
-            f.render_widget(
-                Paragraph::new(no_metrics_lines).block(ColorScheme::clean_block()),
-                chunks[1],
-            );
-        }
+        let list_area = chunks[1];
+        let header_area = Rect::new(list_area.x, list_area.y, list_area.width, 1);
+        let items_area = Rect::new(
+            list_area.x,
+            list_area.y + 1,
+            list_area.width,
+            list_area.height - 1,
+        );
+
+        f.render_widget(header, header_area);
+        f.render_widget(List::new(items), items_area);
+
+        // Timeline Header
+        f.render_widget(
+            Paragraph::new("Activity Timeline").style(
+                Style::default()
+                    .fg(ColorScheme::WHITE_TEXT)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            chunks[2],
+        );
+
+        // Timeline Bar (Visual Mock)
+        let bar = Block::default().style(Style::default().bg(ColorScheme::CLEAN_BLUE)); // Simple bar for now
+        f.render_widget(bar, chunks[3]);
+
+        // Timeline labels
+        let labels = Paragraph::new("08:00       12:00       16:00")
+            .style(Style::default().fg(ColorScheme::GRAY_TEXT));
+        f.render_widget(
+            labels,
+            Rect::new(chunks[3].x, chunks[3].y + 1, chunks[3].width, 1),
+        );
     }
 
     fn render_project_switcher(&self, f: &mut Frame, area: Rect) {
@@ -555,21 +563,6 @@ impl Dashboard {
         }
     }
 
-    async fn get_session_metrics(&mut self) -> Result<Option<crate::utils::ipc::SessionMetrics>> {
-        if !is_daemon_running() {
-            return Ok(None);
-        }
-
-        let response = self
-            .client
-            .send_message(&IpcMessage::GetSessionMetrics(0))
-            .await?;
-        match response {
-            IpcResponse::SessionMetrics(metrics) => Ok(Some(metrics)),
-            IpcResponse::Error(_) => Ok(None), // No active session
-            _ => Ok(None),
-        }
-    }
 
     async fn send_activity_heartbeat(&mut self) -> Result<()> {
         if !is_daemon_running() {
@@ -584,14 +577,6 @@ impl Dashboard {
     }
 
     // Helper methods for project switcher navigation
-    async fn toggle_project_switcher(&mut self) -> Result<()> {
-        self.show_project_switcher = !self.show_project_switcher;
-        if self.show_project_switcher {
-            // Fetch projects when opening switcher
-            self.refresh_projects().await?;
-        }
-        Ok(())
-    }
 
     fn navigate_projects(&mut self, direction: i32) {
         if self.available_projects.is_empty() {
@@ -617,14 +602,6 @@ impl Dashboard {
         Ok(())
     }
 
-    fn calculate_efficiency_percentage(&self, metrics: &crate::utils::ipc::SessionMetrics) -> f64 {
-        if metrics.total_duration == 0 {
-            return 0.0;
-        }
-        let active_ratio = metrics.active_duration as f64 / metrics.total_duration as f64;
-        (active_ratio * 100.0).min(100.0)
-    }
-
     async fn switch_to_selected_project(&mut self) -> Result<()> {
         if let Some(selected_project) = self.available_projects.get(self.selected_project_index) {
             // Switch to the selected project
@@ -646,11 +623,36 @@ impl Dashboard {
         Ok(())
     }
 
-    async fn load_projects(&mut self) -> Result<Vec<Project>> {
-        let db_path = get_database_path()?;
-        let db = Database::new(&db_path)?;
+    fn render_header(&self, f: &mut Frame, area: Rect) {
+        let time_str = Local::now().format("%H:%M").to_string();
+        let date_str = Local::now().format("%A, %B %d").to_string();
 
-        let projects = ProjectQueries::list_all(&db.connection, false)?; // Don't include archived
-        Ok(projects)
+        let header_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(50), // Title
+                Constraint::Percentage(50), // Date/Time
+            ])
+            .split(area);
+
+        f.render_widget(
+            Paragraph::new("TEMPO").style(
+                Style::default()
+                    .fg(ColorScheme::CLEAN_GOLD)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            header_layout[0],
+        );
+
+        f.render_widget(
+            Paragraph::new(format!("{}  {}", date_str, time_str))
+                .alignment(Alignment::Right)
+                .style(Style::default().fg(ColorScheme::GRAY_TEXT)),
+            header_layout[1],
+        );
+    }
+
+    fn get_daily_stats(&self) -> &(i64, i64, i64) {
+        &self.daily_stats
     }
 }

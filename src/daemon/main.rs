@@ -10,9 +10,7 @@ mod state;
 
 use server::DaemonServer;
 use state::{start_idle_checker, DaemonState};
-use tempo_cli::db::{get_connection, initialize_database, initialize_pool, Database};
-use tempo_cli::models::Config;
-use tempo_cli::utils::get_config_dir;
+use tempo_cli::db::{initialize_database, initialize_pool};
 use tempo_cli::utils::ipc::{get_socket_path, remove_pid_file, write_pid_file};
 use tempo_cli::utils::paths::get_data_dir;
 
