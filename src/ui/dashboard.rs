@@ -16,7 +16,7 @@ use crate::{
     models::{Project, Session},
     ui::formatter::Formatter,
     ui::widgets::{ColorScheme, Spinner},
-    utils::ipc::{is_daemon_running, IpcClient, IpcMessage, IpcResponse},
+    utils::ipc::{get_socket_path, is_daemon_running, IpcClient, IpcMessage, IpcResponse},
 };
 
 pub struct Dashboard {
@@ -33,7 +33,12 @@ pub struct Dashboard {
 
 impl Dashboard {
     pub async fn new() -> Result<Self> {
-        let client = IpcClient::new()?;
+        let socket_path = get_socket_path()?;
+        let client = if socket_path.exists() && is_daemon_running() {
+            IpcClient::connect(&socket_path).await.unwrap_or_else(|_| IpcClient::new().unwrap())
+        } else {
+            IpcClient::new()?
+        };
         Ok(Self {
             client,
             current_session: None,
@@ -131,6 +136,25 @@ impl Dashboard {
         }
         Ok(())
     }
+
+    async fn ensure_connected(&mut self) -> Result<()> {
+        if !is_daemon_running() {
+            return Err(anyhow::anyhow!("Daemon is not running"));
+        }
+        
+        // Test if we have a working connection
+        if self.client.stream.is_some() {
+            return Ok(());
+        }
+        
+        // Reconnect if needed
+        let socket_path = get_socket_path()?;
+        if socket_path.exists() {
+            self.client = IpcClient::connect(&socket_path).await?;
+        }
+        Ok(())
+    }
+
     fn render_dashboard_sync(&mut self, f: &mut Frame) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -514,6 +538,8 @@ impl Dashboard {
             return Ok(None);
         }
 
+        self.ensure_connected().await?;
+
         let response = self
             .client
             .send_message(&IpcMessage::GetActiveSession)
@@ -529,6 +555,8 @@ impl Dashboard {
         if !is_daemon_running() {
             return Ok(None);
         }
+
+        self.ensure_connected().await?;
 
         let response = self
             .client
@@ -546,6 +574,8 @@ impl Dashboard {
         if !is_daemon_running() {
             return Ok((0, 0, 0));
         }
+
+        self.ensure_connected().await?;
 
         let today = chrono::Local::now().date_naive();
         let response = self
@@ -568,6 +598,8 @@ impl Dashboard {
         if !is_daemon_running() {
             return Ok(());
         }
+
+        self.ensure_connected().await?;
 
         let _response = self
             .client
@@ -594,6 +626,8 @@ impl Dashboard {
             return Ok(());
         }
 
+        self.ensure_connected().await?;
+
         let response = self.client.send_message(&IpcMessage::ListProjects).await?;
         if let IpcResponse::ProjectList(projects) = response {
             self.available_projects = projects;
@@ -604,8 +638,11 @@ impl Dashboard {
 
     async fn switch_to_selected_project(&mut self) -> Result<()> {
         if let Some(selected_project) = self.available_projects.get(self.selected_project_index) {
-            // Switch to the selected project
             let project_id = selected_project.id.unwrap_or(0);
+            
+            self.ensure_connected().await?;
+            
+            // Switch to the selected project
             let response = self
                 .client
                 .send_message(&IpcMessage::SwitchProject(project_id))
