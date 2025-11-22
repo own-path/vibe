@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod formatter;
 pub mod reports;
 pub mod types;
 

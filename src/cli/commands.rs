@@ -3,6 +3,7 @@ use super::{
     GoalAction, IssueAction, ProjectAction, SessionAction, TagAction, TemplateAction,
     WorkspaceAction,
 };
+use crate::cli::formatter::{CliFormatter, format_duration_clean, truncate_string};
 use crate::cli::reports::ReportGenerator;
 use crate::db::advanced_queries::{
     GitBranchQueries, GoalQueries, InsightQueries, TemplateQueries, TimeEstimateQueries,
@@ -516,184 +517,73 @@ async fn generate_report(
 
 // Formatted output functions
 fn print_formatted_session(session: &crate::utils::ipc::SessionInfo) -> Result<()> {
-    // Color scheme definitions
-    let context_color = match session.context.as_str() {
-        "terminal" => "\x1b[96m", // Bright cyan
-        "ide" => "\x1b[95m",      // Bright magenta
-        "linked" => "\x1b[93m",   // Bright yellow
-        "manual" => "\x1b[94m",   // Bright blue
-        _ => "\x1b[97m",          // Bright white (default)
-    };
-
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m           \x1b[1;37mCurrent Session\x1b[0m               \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!("\x1b[36m│\x1b[0m Status:   \x1b[1;32m*\x1b[0m \x1b[32mActive\x1b[0m                     \x1b[36m│\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Project:  \x1b[1;33m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-        truncate_string(&session.project_name, 25)
-    );
-    println!(
-        "\x1b[36m│\x1b[0m Duration: \x1b[1;32m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-        format_duration_fancy(session.duration)
-    );
-    println!(
-        "\x1b[36m│\x1b[0m Started:  \x1b[37m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-        session.start_time.format("%H:%M:%S").to_string()
-    );
-    println!(
-        "\x1b[36m│\x1b[0m Context:  {}{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-        context_color,
-        truncate_string(&session.context, 25)
-    );
-    println!(
-        "\x1b[36m│\x1b[0m Path:     \x1b[2;37m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-        truncate_string(&session.project_path.to_string_lossy(), 25)
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_section_header("Current Session");
+    CliFormatter::print_status("Active", true);
+    CliFormatter::print_field_bold("Project", &session.project_name, Some("yellow"));
+    CliFormatter::print_field_bold("Duration", &format_duration_clean(session.duration), Some("green"));
+    CliFormatter::print_field("Started", &session.start_time.format("%H:%M:%S").to_string(), None);
+    CliFormatter::print_field("Context", &session.context, Some(get_context_color(&session.context)));
+    CliFormatter::print_field("Path", &session.project_path.to_string_lossy(), Some("gray"));
     Ok(())
+}
+
+fn get_context_color(context: &str) -> &str {
+    match context {
+        "terminal" => "cyan",
+        "ide" => "magenta", 
+        "linked" => "yellow",
+        "manual" => "blue",
+        _ => "white",
+    }
 }
 
 fn print_formatted_report(report: &crate::cli::reports::TimeReport) -> Result<()> {
-    // Helper function to get context color
-    let get_context_color = |context: &str| -> &str {
-        match context {
-            "terminal" => "\x1b[96m", // Bright cyan
-            "ide" => "\x1b[95m",      // Bright magenta
-            "linked" => "\x1b[93m",   // Bright yellow
-            "manual" => "\x1b[94m",   // Bright blue
-            _ => "\x1b[97m",          // Bright white (default)
-        }
-    };
-
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m            \x1b[1;37mTime Report\x1b[0m                  \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-
+    CliFormatter::print_section_header("Time Report");
+    
     for (project_name, project_summary) in &report.projects {
-        println!(
-            "\x1b[36m│\x1b[0m \x1b[1;33m{:<20}\x1b[0m \x1b[1;32m{:>15}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(project_name, 20),
-            format_duration_fancy(project_summary.total_duration)
-        );
-
+        CliFormatter::print_project_entry(project_name, &format_duration_clean(project_summary.total_duration));
+        
         for (context, duration) in &project_summary.contexts {
-            let context_color = get_context_color(context);
-            println!(
-                "\x1b[36m│\x1b[0m   {}{:<15}\x1b[0m \x1b[32m{:>20}\x1b[0m \x1b[36m│\x1b[0m",
-                context_color,
-                truncate_string(context, 15),
-                format_duration_fancy(*duration)
-            );
+            CliFormatter::print_context_entry(context, &format_duration_clean(*duration));
         }
-        println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
+        println!(); // Add spacing between projects
     }
 
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[1;37mTotal Time:\x1b[0m \x1b[1;32m{:>26}\x1b[0m \x1b[36m│\x1b[0m",
-        format_duration_fancy(report.total_duration)
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_summary("Total Time", &format_duration_clean(report.total_duration));
     Ok(())
 }
 
-fn format_duration_fancy(seconds: i64) -> String {
-    let hours = seconds / 3600;
-    let minutes = (seconds % 3600) / 60;
-    let secs = seconds % 60;
-
-    if hours > 0 {
-        format!("{}h {}m {}s", hours, minutes, secs)
-    } else if minutes > 0 {
-        format!("{}m {}s", minutes, secs)
-    } else {
-        format!("{}s", secs)
-    }
-}
-
-fn truncate_string(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        format!("{:<width$}", s, width = max_len)
-    } else {
-        format!("{:.width$}...", s, width = max_len.saturating_sub(3))
-    }
-}
+// These functions are now handled by CliFormatter
 
 // Helper functions for consistent messaging
 fn print_daemon_not_running() {
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m               \x1b[1;37mDaemon Status\x1b[0m               \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!("\x1b[36m│\x1b[0m Status:   \x1b[1;31m*\x1b[0m \x1b[31mOffline\x1b[0m                   \x1b[36m│\x1b[0m");
-    println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[33mDaemon is not running.\x1b[0m                 \x1b[36m│\x1b[0m"
-    );
-    println!("\x1b[36m│\x1b[0m \x1b[37mStart it with:\x1b[0m \x1b[96mtempo start\x1b[0m         \x1b[36m│\x1b[0m");
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_section_header("Daemon Status");
+    CliFormatter::print_status("Offline", false);
+    CliFormatter::print_warning("Daemon is not running.");
+    CliFormatter::print_info("Start it with: tempo start");
 }
 
 fn print_no_active_session(message: &str) {
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m           \x1b[1;37mCurrent Session\x1b[0m               \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!("\x1b[36m│\x1b[0m Status:   \x1b[1;33m-\x1b[0m \x1b[33mIdle\x1b[0m                      \x1b[36m│\x1b[0m");
-    println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[90m{:<37}\x1b[0m \x1b[36m│\x1b[0m",
-        message
-    );
-    println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[37mStart tracking:\x1b[0m                       \x1b[36m│\x1b[0m"
-    );
-    println!(
-        "\x1b[36m│\x1b[0m   \x1b[96mtempo session start\x1b[0m                \x1b[36m│\x1b[0m"
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_section_header("Current Session");
+    CliFormatter::print_status("Idle", false);
+    CliFormatter::print_empty_state(message);
+    CliFormatter::print_info("Start tracking: tempo session start");
 }
 
 fn print_daemon_status(uptime: u64, active_session: Option<&crate::utils::ipc::SessionInfo>) {
-    let uptime_formatted = format_duration_fancy(uptime as i64);
-
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m               \x1b[1;37mDaemon Status\x1b[0m               \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!("\x1b[36m│\x1b[0m Status:   \x1b[1;32m*\x1b[0m \x1b[32mOnline\x1b[0m                    \x1b[36m│\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Uptime:   \x1b[37m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-        uptime_formatted
-    );
+    CliFormatter::print_section_header("Daemon Status");
+    CliFormatter::print_status("Online", true);
+    CliFormatter::print_field("Uptime", &format_duration_clean(uptime as i64), None);
 
     if let Some(session) = active_session {
-        let context_color = match session.context.as_str() {
-            "terminal" => "\x1b[96m",
-            "ide" => "\x1b[95m",
-            "linked" => "\x1b[93m",
-            "manual" => "\x1b[94m",
-            _ => "\x1b[97m",
-        };
-
-        println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
-        println!("\x1b[36m│\x1b[0m \x1b[1;37mActive Session:\x1b[0m                      \x1b[36m│\x1b[0m");
-        println!(
-            "\x1b[36m│\x1b[0m   Project: \x1b[1;33m{:<23}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(&session.project_name, 23)
-        );
-        println!(
-            "\x1b[36m│\x1b[0m   Duration: \x1b[1;32m{:<22}\x1b[0m \x1b[36m│\x1b[0m",
-            format_duration_fancy(session.duration)
-        );
-        println!(
-            "\x1b[36m│\x1b[0m   Context: {}{:<23}\x1b[0m \x1b[36m│\x1b[0m",
-            context_color, session.context
-        );
+        println!();
+        CliFormatter::print_field_bold("Active Session", "", None);
+        CliFormatter::print_field("  Project", &session.project_name, Some("yellow"));
+        CliFormatter::print_field("  Duration", &format_duration_clean(session.duration), Some("green"));
+        CliFormatter::print_field("  Context", &session.context, Some(get_context_color(&session.context)));
     } else {
-        println!("\x1b[36m│\x1b[0m Session:  \x1b[33mNo active session\x1b[0m             \x1b[36m│\x1b[0m");
+        CliFormatter::print_field("Session", "No active session", Some("yellow"));
     }
-
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
 }
 
 // Project management functions
@@ -1262,7 +1152,7 @@ async fn list_sessions(limit: Option<usize>, project_filter: Option<String>) -> 
         );
         println!(
             "\x1b[36m│\x1b[0m    Duration: \x1b[32m{:<24}\x1b[0m \x1b[36m│\x1b[0m",
-            format_duration_fancy(duration)
+            format_duration_clean(duration)
         );
         println!(
             "\x1b[36m│\x1b[0m    Context:  {}{:<24}\x1b[0m \x1b[36m│\x1b[0m",
