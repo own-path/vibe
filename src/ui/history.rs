@@ -22,6 +22,7 @@ pub struct SessionHistoryBrowser {
     sessions: Vec<Session>,
     table_state: TableState,
     show_filters: bool,
+    user_host_string: String,
 }
 
 impl SessionHistoryBrowser {
@@ -38,10 +39,41 @@ impl SessionHistoryBrowser {
             table_state.select(Some(0));
         }
 
+        // Get user@machine string
+        let user = std::process::Command::new("git")
+            .args(["config", "user.name"])
+            .output()
+            .ok()
+            .and_then(|output| {
+                if output.status.success() {
+                    Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+                } else {
+                    None
+                }
+            })
+            .or_else(|| std::env::var("USER").ok())
+            .unwrap_or_else(|| "user".to_string());
+
+        let host = std::process::Command::new("hostname")
+            .output()
+            .ok()
+            .and_then(|output| {
+                if output.status.success() {
+                    Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+                } else {
+                    None
+                }
+            })
+            .or_else(|| std::env::var("HOSTNAME").ok())
+            .unwrap_or_else(|| "machine".to_string());
+
+        let user_host_string = format!("{}@{}", user, host);
+
         Ok(Self {
             sessions,
             table_state,
             show_filters: false,
+            user_host_string,
         })
     }
 
@@ -101,20 +133,50 @@ impl SessionHistoryBrowser {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
+                Constraint::Length(1), // Header
                 Constraint::Length(3), // Filter Bar
                 Constraint::Min(0),    // Main Content (Table + Details)
                 Constraint::Length(1), // Footer
             ])
             .split(f.size());
 
+        // 0. Header
+        self.render_header(f, chunks[0]);
+
         // 1. Filter Bar
-        self.render_filter_bar(f, chunks[0]);
+        self.render_filter_bar(f, chunks[1]);
 
         // 2. Main Content
-        self.render_main_content(f, chunks[1]);
+        self.render_main_content(f, chunks[2]);
 
         // 3. Footer
-        self.render_footer(f, chunks[2]);
+        self.render_footer(f, chunks[3]);
+    }
+
+    fn render_header(&self, f: &mut Frame, area: Rect) {
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(50), // Title
+                Constraint::Percentage(50), // User@Host
+            ])
+            .split(area);
+
+        f.render_widget(
+            Paragraph::new("Tempo TUI :: History Browser").style(
+                Style::default()
+                    .fg(ColorScheme::WHITE_TEXT)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            chunks[0],
+        );
+
+        f.render_widget(
+            Paragraph::new(self.user_host_string.as_str())
+                .alignment(Alignment::Right)
+                .style(Style::default().fg(ColorScheme::GRAY_TEXT)),
+            chunks[1],
+        );
     }
 
     fn render_filter_bar(&self, f: &mut Frame, area: Rect) {

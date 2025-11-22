@@ -152,7 +152,7 @@ impl InteractiveTimer {
 
     fn render_large_timer(&self, f: &mut Frame, area: Rect) {
         let elapsed = self.get_elapsed_time();
-        let time_str = Formatter::format_duration(elapsed);
+        let time_str = Formatter::format_duration_clock(elapsed);
 
         // In a real terminal, "large text" is hard without ASCII art libraries.
         // We'll use bold and bright colors for now.

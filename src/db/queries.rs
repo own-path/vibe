@@ -221,6 +221,61 @@ impl ProjectQueries {
         let changes = stmt.execute(params![archived, project_id])?;
         Ok(changes > 0)
     }
+
+    pub fn list_recent_with_stats(
+        conn: &Connection,
+        limit: usize,
+    ) -> Result<Vec<(Project, i64, i64, Option<chrono::DateTime<chrono::Utc>>)>> {
+        // (Project, today_seconds, total_seconds, last_active)
+        let mut stmt = conn.prepare(
+            "SELECT 
+                p.id, p.name, p.path, p.git_hash, p.created_at, p.updated_at, p.is_archived, p.description,
+                COALESCE(SUM(CASE 
+                    WHEN date(s.start_time) = date('now') AND s.end_time IS NOT NULL THEN 
+                        (julianday(s.end_time) - julianday(s.start_time)) * 86400 - s.paused_duration
+                    ELSE 0
+                END), 0) as today_seconds,
+                COALESCE(SUM(CASE 
+                    WHEN s.end_time IS NOT NULL THEN 
+                        (julianday(s.end_time) - julianday(s.start_time)) * 86400 - s.paused_duration
+                    ELSE 0
+                END), 0) as total_seconds,
+                MAX(s.end_time) as last_active
+             FROM projects p
+             LEFT JOIN sessions s ON p.id = s.project_id
+             WHERE p.is_archived = 0
+             GROUP BY p.id
+             ORDER BY last_active DESC NULLS LAST
+             LIMIT ?1",
+        )?;
+
+        let projects = stmt
+            .query_map([limit], |row| {
+                let project = Project {
+                    id: Some(row.get(0)?),
+                    name: row.get(1)?,
+                    path: PathBuf::from(row.get::<_, String>(2)?),
+                    git_hash: row.get(3)?,
+                    created_at: row.get(4)?,
+                    updated_at: row.get(5)?,
+                    is_archived: row.get(6)?,
+                    description: row.get(7)?,
+                };
+                let today_seconds: f64 = row.get(8)?;
+                let total_seconds: f64 = row.get(9)?;
+                let last_active: Option<chrono::DateTime<chrono::Utc>> = row.get(10)?;
+
+                Ok((
+                    project,
+                    today_seconds as i64,
+                    total_seconds as i64,
+                    last_active,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(projects)
+    }
 }
 
 pub struct SessionQueries;
@@ -721,6 +776,48 @@ impl SessionQueries {
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(sessions)
+    }
+
+    pub fn get_daily_stats(conn: &Connection, date: chrono::NaiveDate) -> Result<(i64, i64, i64)> {
+        let sessions = Self::list_with_filter(conn, None, Some(date), Some(date), None)?;
+        let completed_sessions: Vec<_> = sessions
+            .into_iter()
+            .filter(|s| s.end_time.is_some())
+            .collect();
+
+        let sessions_count = completed_sessions.len() as i64;
+        let total_seconds: i64 = completed_sessions
+            .iter()
+            .map(|s| s.current_active_duration().num_seconds())
+            .sum();
+
+        let avg_seconds = if sessions_count > 0 {
+            total_seconds / sessions_count
+        } else {
+            0
+        };
+
+        Ok((sessions_count, total_seconds, avg_seconds))
+    }
+
+    pub fn get_weekly_stats(conn: &Connection, start_of_week: chrono::NaiveDate) -> Result<i64> {
+        let mut stmt = conn.prepare(
+            "SELECT 
+                COALESCE(SUM(CASE 
+                    WHEN end_time IS NOT NULL THEN 
+                        (julianday(end_time) - julianday(start_time)) * 86400 - paused_duration
+                    ELSE 0
+                END), 0) as total_seconds
+             FROM sessions 
+             WHERE date(start_time) >= ?1",
+        )?;
+
+        let total_seconds: f64 = stmt
+            .query_row([start_of_week.format("%Y-%m-%d").to_string()], |row| {
+                row.get(0)
+            })?;
+
+        Ok(total_seconds as i64)
     }
 }
 

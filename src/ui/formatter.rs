@@ -24,6 +24,15 @@ impl Formatter {
         }
     }
 
+    pub fn format_duration_clock(seconds: i64) -> String {
+        let duration = Duration::seconds(seconds);
+        let hours = duration.num_hours();
+        let minutes = duration.num_minutes() % 60;
+        let seconds = duration.num_seconds() % 60;
+
+        format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+    }
+
     pub fn format_timestamp(timestamp: &DateTime<Local>) -> String {
         timestamp.format("%Y-%m-%d %H:%M:%S").to_string()
     }

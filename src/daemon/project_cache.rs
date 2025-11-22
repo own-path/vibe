@@ -4,6 +4,7 @@ use tempo_cli::models::Project;
 
 /// Optimized project cache with efficient lookups and reduced memory usage
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct ProjectCache {
     /// Path-based cache for fast path lookups
     by_path: HashMap<PathBuf, ProjectEntry>,
@@ -13,6 +14,7 @@ pub struct ProjectCache {
 
 /// Minimal project entry for caching
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ProjectEntry {
     pub id: i64,
     pub name: String,
@@ -31,6 +33,7 @@ impl From<&Project> for ProjectEntry {
     }
 }
 
+#[allow(dead_code)]
 impl ProjectCache {
     /// Create a new empty project cache
     pub fn new() -> Self {

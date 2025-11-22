@@ -1,10 +1,11 @@
 use super::state::SharedDaemonState;
 use anyhow::Result;
+use chrono::Datelike;
 use log::{debug, error, info, warn};
 use std::path::PathBuf;
-use tempo_cli::db::queries::{ProjectQueries, SessionQueries};
-use tempo_cli::utils::ipc::{
-    read_ipc_message, write_ipc_response, IpcMessage, IpcResponse, IpcServer,
+use tempo_cli::{
+    db::queries::{ProjectQueries, SessionQueries},
+    utils::ipc::{read_ipc_message, write_ipc_response, IpcMessage, IpcResponse, IpcServer},
 };
 use tokio::net::UnixStream;
 
@@ -182,41 +183,48 @@ async fn handle_message(message: IpcMessage, state: &SharedDaemonState) -> IpcRe
                     return IpcResponse::Error(format!("Failed to acquire database lock: {}", e))
                 }
             };
-
-            // Get completed sessions for the day
-            match SessionQueries::list_with_filter(
-                &db.connection,
-                None,
-                Some(date),
-                Some(date),
-                None,
-            ) {
-                Ok(sessions) => {
-                    let completed_sessions: Vec<_> = sessions
-                        .into_iter()
-                        .filter(|s| s.end_time.is_some())
-                        .collect();
-
-                    let sessions_count = completed_sessions.len() as i64;
-
-                    let total_seconds: i64 = completed_sessions
-                        .iter()
-                        .map(|s| s.current_active_duration().num_seconds())
-                        .sum();
-
-                    let avg_seconds = if sessions_count > 0 {
-                        total_seconds / sessions_count
-                    } else {
-                        0
-                    };
-
-                    IpcResponse::DailyStats {
-                        sessions_count,
-                        total_seconds,
-                        avg_seconds,
-                    }
-                }
+            match SessionQueries::get_daily_stats(&db.connection, date) {
+                Ok((sessions_count, total_seconds, avg_seconds)) => IpcResponse::DailyStats {
+                    sessions_count,
+                    total_seconds,
+                    avg_seconds,
+                },
                 Err(e) => IpcResponse::Error(format!("Failed to get daily stats: {}", e)),
+            }
+        }
+
+        IpcMessage::GetWeeklyStats => {
+            let state_guard = state.read().await;
+            let db = match state_guard.db.lock() {
+                Ok(db) => db,
+                Err(e) => {
+                    return IpcResponse::Error(format!("Failed to acquire database lock: {}", e))
+                }
+            };
+
+            let now = chrono::Local::now().date_naive();
+            let days_from_monday = now.weekday().num_days_from_monday();
+            let start_of_week = now - chrono::Duration::days(days_from_monday as i64);
+
+            match SessionQueries::get_weekly_stats(&db.connection, start_of_week) {
+                Ok(total_seconds) => IpcResponse::WeeklyStats { total_seconds },
+                Err(e) => IpcResponse::Error(format!("Failed to get weekly stats: {}", e)),
+            }
+        }
+
+        IpcMessage::GetSessionsForDate(date) => {
+            let state_guard = state.read().await;
+            let db = match state_guard.db.lock() {
+                Ok(db) => db,
+                Err(e) => {
+                    return IpcResponse::Error(format!("Failed to acquire database lock: {}", e))
+                }
+            };
+            let from = date.and_hms_opt(0, 0, 0).unwrap().and_utc();
+            let to = date.and_hms_opt(23, 59, 59).unwrap().and_utc();
+            match SessionQueries::list_by_date_range(&db.connection, from, to) {
+                Ok(sessions) => IpcResponse::SessionList(sessions),
+                Err(e) => IpcResponse::Error(format!("Failed to get sessions for date: {}", e)),
             }
         }
 
@@ -255,6 +263,34 @@ async fn handle_message(message: IpcMessage, state: &SharedDaemonState) -> IpcRe
             match ProjectQueries::list_all(&db.connection, false) {
                 Ok(projects) => IpcResponse::ProjectList(projects),
                 Err(e) => IpcResponse::Error(format!("Failed to list projects: {}", e)),
+            }
+        }
+
+        IpcMessage::GetRecentProjects => {
+            let state_guard = state.read().await;
+            let db = match state_guard.db.lock() {
+                Ok(db) => db,
+                Err(e) => {
+                    return IpcResponse::Error(format!("Failed to acquire database lock: {}", e))
+                }
+            };
+            match ProjectQueries::list_recent_with_stats(&db.connection, 5) {
+                Ok(projects) => {
+                    let projects_with_stats = projects
+                        .into_iter()
+                        .map(|(project, today_seconds, total_seconds, last_active)| {
+                            use tempo_cli::utils::ipc::ProjectWithStats;
+                            ProjectWithStats {
+                                project,
+                                today_seconds,
+                                total_seconds,
+                                last_active,
+                            }
+                        })
+                        .collect();
+                    IpcResponse::RecentProjects(projects_with_stats)
+                }
+                Err(e) => IpcResponse::Error(format!("Failed to list recent projects: {}", e)),
             }
         }
 

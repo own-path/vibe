@@ -1,8 +1,12 @@
 use chrono::{DateTime, Local};
 use ratatui::{
+    buffer::Buffer,
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
-    widgets::{Block, BorderType, Borders},
+    text::{Line, Span},
+    widgets::{Block, BorderType, Borders, Paragraph, Widget},
 };
+use std::time::{Duration, Instant};
 
 use crate::ui::formatter::Formatter;
 
@@ -81,26 +85,35 @@ impl ColorScheme {
 
 pub struct Spinner {
     frames: Vec<&'static str>,
-    current: usize,
+    current_frame: usize,
+    last_update: Instant,
+    interval: Duration,
 }
 
 impl Spinner {
     pub fn new() -> Self {
         Self {
-            // Using a simple line spinner that is ASCII safe but looks good
-            frames: vec!["|", "/", "-", "\\"],
-            current: 0,
+            frames: vec!["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+            current_frame: 0,
+            last_update: Instant::now(),
+            interval: Duration::from_millis(100),
         }
     }
 
-    pub fn next(&mut self) -> &'static str {
-        let frame = self.frames[self.current];
-        self.current = (self.current + 1) % self.frames.len();
-        frame
+    pub fn with_speed(mut self, interval: Duration) -> Self {
+        self.interval = interval;
+        self
     }
 
-    pub fn current(&self) -> &'static str {
-        self.frames[self.current]
+    pub fn next(&mut self) {
+        if self.last_update.elapsed() >= self.interval {
+            self.current_frame = (self.current_frame + 1) % self.frames.len();
+            self.last_update = Instant::now();
+        }
+    }
+
+    pub fn current(&self) -> &str {
+        self.frames[self.current_frame]
     }
 }
 
@@ -186,26 +199,135 @@ impl SummaryWidget {
             active_count
         )
     }
-
     pub fn format_session_line(
         start_time: &DateTime<Local>,
         duration: i64,
-        context: &str,
-        is_active: bool,
+        project_name: &str,
+        status: &str,
     ) -> String {
-        let status_char = if is_active { "*" } else { "+" };
-        let duration_str = if is_active {
-            format!("{} (active)", Formatter::format_duration(duration))
-        } else {
-            Formatter::format_duration(duration)
-        };
-
         format!(
-            "{} {} | {} | {}",
-            status_char,
-            start_time.format("%H:%M:%S"),
-            duration_str,
-            context
+            "{} - {} ({}) [{}]",
+            start_time.format("%H:%M"),
+            project_name,
+            Formatter::format_duration(duration),
+            status
         )
+    }
+}
+
+#[allow(dead_code)]
+pub enum StatusIndicator {
+    Online,
+    Offline,
+    Syncing,
+    Error,
+    Custom(String, Color),
+}
+
+impl StatusIndicator {
+    #[allow(dead_code)]
+    pub fn render(&self) -> Span {
+        match self {
+            StatusIndicator::Online => Span::styled("●", Style::default().fg(Color::Green)),
+            StatusIndicator::Offline => Span::styled("○", Style::default().fg(Color::Gray)),
+            StatusIndicator::Syncing => Span::styled("⟳", Style::default().fg(Color::Blue)),
+            StatusIndicator::Error => Span::styled("⚠", Style::default().fg(Color::Red)),
+            StatusIndicator::Custom(symbol, color) => {
+                Span::styled(symbol.clone(), Style::default().fg(*color))
+            }
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub struct GradientProgressBar;
+
+impl GradientProgressBar {
+    #[allow(dead_code)]
+    pub fn get_color(progress: u16) -> Color {
+        match progress {
+            0..=25 => Color::Red,
+            26..=50 => Color::Yellow,
+            51..=75 => Color::Green,
+            _ => Color::Cyan,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn render(progress: u16, width: u16) -> Line<'static> {
+        let filled_width = (width as f64 * (progress as f64 / 100.0)).round() as u16;
+        let empty_width = width.saturating_sub(filled_width);
+
+        let color = Self::get_color(progress);
+
+        let filled = Span::styled(
+            "█".repeat(filled_width as usize),
+            Style::default().fg(color),
+        );
+        let empty = Span::styled(
+            "░".repeat(empty_width as usize),
+            Style::default().fg(Color::DarkGray),
+        );
+
+        Line::from(vec![filled, empty])
+    }
+}
+
+#[allow(dead_code)]
+pub struct SessionStatsWidget;
+
+impl SessionStatsWidget {
+    #[allow(dead_code)]
+    pub fn render(
+        daily_stats: &(i64, i64, i64), // (sessions, total_time, active_time)
+        weekly_total: i64,
+        area: Rect,
+        buf: &mut Buffer,
+    ) {
+        let (daily_sessions, daily_total, _) = daily_stats;
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(ColorScheme::border()))
+            .title(Span::styled(
+                " Session Stats ",
+                Style::default().fg(ColorScheme::title()),
+            ));
+
+        let inner_area = block.inner(area);
+        block.render(area, buf);
+
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1), // Daily
+                Constraint::Length(1), // Weekly
+                Constraint::Min(0),
+            ])
+            .split(inner_area);
+
+        // Daily Stats
+        let daily_text = Line::from(vec![
+            Span::styled("Today: ", Style::default().fg(ColorScheme::GRAY_TEXT)),
+            Span::styled(
+                format!("{} sessions, ", daily_sessions),
+                Style::default().fg(ColorScheme::WHITE_TEXT),
+            ),
+            Span::styled(
+                Formatter::format_duration(*daily_total),
+                Style::default().fg(ColorScheme::NEON_CYAN),
+            ),
+        ]);
+        Paragraph::new(daily_text).render(layout[0], buf);
+
+        // Weekly Stats
+        let weekly_text = Line::from(vec![
+            Span::styled("This Week: ", Style::default().fg(ColorScheme::GRAY_TEXT)),
+            Span::styled(
+                Formatter::format_duration(weekly_total),
+                Style::default().fg(ColorScheme::NEON_PURPLE),
+            ),
+        ]);
+        Paragraph::new(weekly_text).render(layout[1], buf);
     }
 }

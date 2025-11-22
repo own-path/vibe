@@ -29,7 +29,10 @@ pub enum IpcMessage {
     GetActiveSession,
     GetProject(i64),
     GetDailyStats(chrono::NaiveDate),
+    GetWeeklyStats,
+    GetSessionsForDate(chrono::NaiveDate),
     GetSessionMetrics(i64),
+    GetRecentProjects,
 
     // Real-time monitoring
     SubscribeToUpdates,
@@ -58,16 +61,29 @@ pub enum IpcResponse {
     ActiveSession(Option<crate::models::Session>),
     Project(Option<crate::models::Project>),
     ProjectList(Vec<crate::models::Project>),
+    SessionList(Vec<crate::models::Session>),
+    RecentProjects(Vec<ProjectWithStats>),
     DailyStats {
         sessions_count: i64,
         total_seconds: i64,
         avg_seconds: i64,
+    },
+    WeeklyStats {
+        total_seconds: i64,
     },
     SessionMetrics(SessionMetrics),
     SessionInfo(SessionInfo),
     SubscriptionConfirmed,
     ActivityUpdate(ActivityUpdate),
     Pong,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectWithStats {
+    pub project: crate::models::Project,
+    pub today_seconds: i64,
+    pub total_seconds: i64,
+    pub last_active: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -268,6 +268,7 @@ impl DatabasePool {
     }
 
     /// Return a connection to the pool
+    #[allow(dead_code)]
     fn return_connection(&self, conn: PooledConnection) -> Result<()> {
         let mut pool = self
             .pool

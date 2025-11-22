@@ -1,6 +1,6 @@
 [package]
 name = "tempo-cli"
-version = "0.2.10"
+version = "0.3.0"
 edition = "2021"
 authors = ["Own Path <brandy.daryl@gmail.com>"]
 description = "Automatic project time tracking CLI tool with beautiful terminal interface"

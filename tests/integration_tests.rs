@@ -1,4 +1,3 @@
-use anyhow::Result;
 use chrono::{Duration, Utc};
 use tempo_cli::db::queries::{ProjectQueries, SessionQueries};
 use tempo_cli::models::{Project, Session, SessionContext};

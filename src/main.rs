@@ -1,10 +1,7 @@
-mod cli;
-mod db;
-mod models;
-mod ui;
-mod utils;
-
-use cli::{commands::handle_command, Cli, Parser};
+use tempo_cli::{
+    cli::{commands::handle_command, Cli, Parser},
+    db,
+};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
