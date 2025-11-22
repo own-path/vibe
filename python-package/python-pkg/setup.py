@@ -34,13 +34,13 @@ class PostInstallCommand(install):
             target = "x86_64-pc-windows-msvc"
         else:
             print(f"Unsupported platform: {system} {machine}")
-            print("Please install Tempo manually with: cargo install tempo")
+            print("Please install Tempo manually with: cargo install tempo-cli")
             return
         
         # Install via cargo as it's the most reliable method
         try:
             print("Installing Tempo via cargo...")
-            subprocess.check_call([sys.executable, "-c", "import subprocess; subprocess.check_call(['cargo', 'install', 'tempo'])"])
+            subprocess.check_call([sys.executable, "-c", "import subprocess; subprocess.check_call(['cargo', 'install', 'tempo-cli'])"])
             print("Tempo installed successfully!")
             print("\nQuick start:")
             print("  tempo start               # Start the daemon")
@@ -51,17 +51,17 @@ class PostInstallCommand(install):
         except subprocess.CalledProcessError:
             print("Failed to install via cargo.")
             print("Please ensure Rust is installed: https://rustup.rs/")
-            print("Then run: cargo install tempo")
+            print("Then run: cargo install tempo-cli")
         except FileNotFoundError:
             print("Cargo not found. Please install Rust first: https://rustup.rs/")
-            print("Then run: cargo install tempo")
+            print("Then run: cargo install tempo-cli")
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
     name="tempo-tracker-cli",
-    version="0.2.8",
+    version="0.3.0",
     author="Own Path",
     author_email="brandy.daryl@gmail.com",
     description="The Most Advanced Automatic Project Time Tracker - Lightning-fast Rust-powered CLI",
