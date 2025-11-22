@@ -88,7 +88,7 @@ impl Session {
     }
 
     pub fn add_pause_duration(&mut self, duration: Duration) {
-        self.paused_duration = self.paused_duration + duration;
+        self.paused_duration += duration;
     }
 
     pub fn is_active(&self) -> bool {

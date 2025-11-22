@@ -33,4 +33,3 @@ impl GitBranch {
         self.total_time_seconds as f64 / 3600.0
     }
 }
-

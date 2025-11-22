@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#![allow(ambiguous_glob_reexports)]
 
 pub mod cli;
 pub mod db;

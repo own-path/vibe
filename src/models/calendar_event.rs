@@ -54,4 +54,3 @@ impl CalendarEvent {
         (self.end_time - self.start_time).num_seconds() as f64 / 3600.0
     }
 }
-

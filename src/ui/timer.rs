@@ -84,11 +84,11 @@ impl InteractiveTimer {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3), // Title
-                Constraint::Length(8), // Timer display
-                Constraint::Length(6), // Progress bar
-                Constraint::Length(6), // Milestones
-                Constraint::Min(0),    // Controls
+                Constraint::Length(1), // Title (compact)
+                Constraint::Length(5), // Timer display (reduced from 8)
+                Constraint::Length(4), // Progress bar (reduced from 6)
+                Constraint::Length(5), // Milestones (reduced from 6)
+                Constraint::Min(0),    // Controls (flexible)
             ])
             .split(f.size());
 
@@ -296,7 +296,7 @@ impl InteractiveTimer {
         } else if self.paused_at.is_some() {
             // Resume timer
             if let Some(paused_at) = self.paused_at {
-                self.total_paused = self.total_paused + (Utc::now() - paused_at);
+                self.total_paused += Utc::now() - paused_at;
             }
             self.paused_at = None;
         } else {

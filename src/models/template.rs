@@ -53,4 +53,3 @@ impl ProjectTemplate {
         self
     }
 }
-

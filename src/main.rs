@@ -21,9 +21,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Handle the command
     let result = handle_command(cli).await;
-    
+
     // Clean up pool on exit
     let _ = db::close_pool();
-    
+
     result
 }

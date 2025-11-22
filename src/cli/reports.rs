@@ -1,9 +1,9 @@
-use anyhow::Result;
-use chrono::{DateTime, Utc, NaiveDate, TimeZone};
-use crate::db::{Database, initialize_database};
+use crate::db::{initialize_database, Database};
 use crate::utils::paths::get_data_dir;
+use anyhow::Result;
+use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use rusqlite::Row;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -75,10 +75,13 @@ impl ReportGenerator {
         use std::io::Write;
 
         let mut file = File::create(output_path)?;
-        
+
         // Write headers
-        writeln!(file, "Date,Project,Context,Duration (minutes),Session Count")?;
-        
+        writeln!(
+            file,
+            "Date,Project,Context,Duration (minutes),Session Count"
+        )?;
+
         // Write data
         for entry in &report.entries {
             writeln!(
@@ -157,17 +160,19 @@ impl ReportGenerator {
 
         let mut stmt = self.db.connection.prepare(&sql)?;
         let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-        
-        let entries = stmt.query_map(param_refs.as_slice(), |row: &Row| {
-            Ok(ReportEntry {
-                date: row.get(0)?,
-                project_name: row.get(1)?,
-                project_path: row.get(2)?,
-                context: row.get(3)?,
-                duration: row.get::<_, f64>(4)? as i64,
-                session_count: row.get(5)?,
-            })
-        })?.collect::<Result<Vec<_>, _>>()?;
+
+        let entries = stmt
+            .query_map(param_refs.as_slice(), |row: &Row| {
+                Ok(ReportEntry {
+                    date: row.get(0)?,
+                    project_name: row.get(1)?,
+                    project_path: row.get(2)?,
+                    context: row.get(3)?,
+                    duration: row.get::<_, f64>(4)? as i64,
+                    session_count: row.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(entries)
     }
@@ -176,19 +181,19 @@ impl ReportGenerator {
         let mut projects = HashMap::new();
 
         for entry in entries {
-            let summary = projects.entry(entry.project_name.clone()).or_insert_with(|| {
-                ProjectSummary {
+            let summary = projects
+                .entry(entry.project_name.clone())
+                .or_insert_with(|| ProjectSummary {
                     name: entry.project_name.clone(),
                     path: entry.project_path.clone(),
                     total_duration: 0,
                     session_count: 0,
                     contexts: HashMap::new(),
-                }
-            });
+                });
 
             summary.total_duration += entry.duration;
             summary.session_count += entry.session_count;
-            
+
             *summary.contexts.entry(entry.context.clone()).or_insert(0) += entry.duration;
         }
 
@@ -201,8 +206,11 @@ fn parse_date(date_str: Option<String>) -> Result<Option<DateTime<Utc>>> {
         Some(date) => {
             let naive_date = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
                 .map_err(|_| anyhow::anyhow!("Invalid date format. Use YYYY-MM-DD"))?;
-            let datetime = Utc.from_utc_datetime(&naive_date.and_hms_opt(0, 0, 0)
-                .ok_or_else(|| anyhow::anyhow!("Failed to create datetime from date"))?);
+            let datetime = Utc.from_utc_datetime(
+                &naive_date
+                    .and_hms_opt(0, 0, 0)
+                    .ok_or_else(|| anyhow::anyhow!("Failed to create datetime from date"))?,
+            );
             Ok(Some(datetime))
         }
         None => Ok(None),
@@ -227,7 +235,7 @@ fn format_period(from: Option<DateTime<Utc>>, to: Option<DateTime<Utc>>) -> Stri
 pub fn print_report(report: &TimeReport) {
     println!("Time Report - {}", report.period);
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     let hours = report.total_duration / 3600;
     let minutes = (report.total_duration % 3600) / 60;
     println!("⏱️  Total Time: {}h {}m", hours, minutes);
@@ -238,12 +246,15 @@ pub fn print_report(report: &TimeReport) {
         println!("📂 Projects:");
         let mut sorted_projects: Vec<_> = report.projects.values().collect();
         sorted_projects.sort_by(|a, b| b.total_duration.cmp(&a.total_duration));
-        
+
         for project in sorted_projects {
             let hours = project.total_duration / 3600;
             let minutes = (project.total_duration % 3600) / 60;
-            println!("   {} - {}h {}m ({} sessions)", project.name, hours, minutes, project.session_count);
-            
+            println!(
+                "   {} - {}h {}m ({} sessions)",
+                project.name, hours, minutes, project.session_count
+            );
+
             // Show context breakdown
             for (context, duration) in &project.contexts {
                 let ctx_hours = duration / 3600;
@@ -258,7 +269,7 @@ pub fn print_report(report: &TimeReport) {
     if !report.entries.is_empty() {
         println!("📅 Daily Breakdown:");
         let mut current_date = String::new();
-        
+
         for entry in &report.entries {
             if entry.date != current_date {
                 if !current_date.is_empty() {
@@ -267,10 +278,13 @@ pub fn print_report(report: &TimeReport) {
                 println!("   {}", entry.date);
                 current_date = entry.date.clone();
             }
-            
+
             let hours = entry.duration / 3600;
             let minutes = (entry.duration % 3600) / 60;
-            println!("     {} ({}) - {}h {}m", entry.project_name, entry.context, hours, minutes);
+            println!(
+                "     {} ({}) - {}h {}m",
+                entry.project_name, entry.context, hours, minutes
+            );
         }
     }
 

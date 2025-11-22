@@ -71,7 +71,9 @@ impl DaemonState {
         info!("Initializing daemon state...");
 
         // Load projects into cache
-        let db = self.db.lock()
+        let db = self
+            .db
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire database lock: {}", e))?;
         let projects = ProjectQueries::list_all(&db.connection, false)?;
         self.projects_cache.insert_all(projects);
@@ -79,7 +81,8 @@ impl DaemonState {
         // Check for any active sessions from previous daemon run
         if let Some(session) = SessionQueries::find_active_session(&db.connection)? {
             warn!("Found active session from previous run, ending it");
-            let session_id = session.id
+            let session_id = session
+                .id
                 .ok_or_else(|| anyhow::anyhow!("Active session missing ID"))?;
             SessionQueries::end_session(&db.connection, session_id)?;
         }
@@ -141,7 +144,8 @@ impl DaemonState {
         project: Project,
         context: SessionContext,
     ) -> Result<()> {
-        let project_id = project.id
+        let project_id = project
+            .id
             .ok_or_else(|| anyhow::anyhow!("Project ID is missing for session creation"))?;
         let project_name = project.name.clone();
         let project_path = project.path.clone();
@@ -150,7 +154,9 @@ impl DaemonState {
 
         // Create session in database
         let session = Session::new(project_id, context);
-        let db = self.db.lock()
+        let db = self
+            .db
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire database lock: {}", e))?;
         let session_id = SessionQueries::create(&db.connection, &session)?;
         drop(db);
@@ -204,8 +210,10 @@ impl DaemonState {
             };
 
             // End session in database
-            let db = self.db.lock()
-            .map_err(|e| anyhow::anyhow!("Failed to acquire database lock: {}", e))?;
+            let db = self
+                .db
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Failed to acquire database lock: {}", e))?;
             SessionQueries::end_session(&db.connection, session.session_id)?;
 
             // Update goals for this project with the session duration
@@ -423,7 +431,9 @@ impl DaemonState {
 
     async fn find_or_create_project(&mut self, path: &PathBuf) -> Result<Project> {
         // Check database for full project data (cache is for lightweight lookups only)
-        let db = self.db.lock()
+        let db = self
+            .db
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire database lock: {}", e))?;
         if let Some(project) = ProjectQueries::find_by_path(&db.connection, path)? {
             drop(db);

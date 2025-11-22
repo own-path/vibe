@@ -1,6 +1,6 @@
-use anyhow::{Result, Context};
-use std::process::{Command, Stdio};
+use anyhow::{Context, Result};
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 
 use crate::utils::ipc::{get_socket_path, is_daemon_running, IpcClient, IpcMessage, IpcResponse};
 use crate::utils::paths::get_data_dir;
@@ -22,20 +22,19 @@ impl DaemonService {
 
         // Find the daemon binary
         let daemon_path = Self::find_daemon_binary()?;
-        
+
         // Start daemon as background process
         let mut cmd = Command::new(daemon_path);
         cmd.stdout(Stdio::null())
-           .stderr(Stdio::null())
-           .stdin(Stdio::null());
+            .stderr(Stdio::null())
+            .stdin(Stdio::null());
 
         // Set environment variables for daemon
         if let Ok(data_dir) = get_data_dir() {
             cmd.env("TEMPO_DATA_DIR", data_dir);
         }
 
-        let child = cmd.spawn()
-            .context("Failed to start daemon process")?;
+        let child = cmd.spawn().context("Failed to start daemon process")?;
 
         println!("Daemon started with PID: {}", child.id());
 
@@ -61,32 +60,29 @@ impl DaemonService {
         println!("Stopping tempo daemon...");
 
         let socket_path = get_socket_path()?;
-        let mut client = IpcClient::connect(&socket_path).await
+        let mut client = IpcClient::connect(&socket_path)
+            .await
             .context("Failed to connect to daemon")?;
 
         let response = client.send_message(&IpcMessage::Shutdown).await?;
-        
+
         match response {
             IpcResponse::Success => {
                 println!("✓ Daemon stopped successfully");
                 Ok(())
             }
-            IpcResponse::Error(e) => {
-                Err(anyhow::anyhow!("Failed to stop daemon: {}", e))
-            }
-            _ => {
-                Err(anyhow::anyhow!("Unexpected response from daemon"))
-            }
+            IpcResponse::Error(e) => Err(anyhow::anyhow!("Failed to stop daemon: {}", e)),
+            _ => Err(anyhow::anyhow!("Unexpected response from daemon")),
         }
     }
 
     /// Restart the tempo daemon
     pub async fn restart_daemon() -> Result<()> {
         println!("Restarting tempo daemon...");
-        
+
         if is_daemon_running() {
             Self::stop_daemon().await?;
-            
+
             // Wait for daemon to fully stop
             for _ in 0..10 {
                 if !is_daemon_running() {
@@ -117,23 +113,21 @@ impl DaemonService {
         let mut client = IpcClient::connect(&socket_path).await?;
 
         let response = client.send_message(&IpcMessage::GetStatus).await?;
-        
+
         match response {
-            IpcResponse::Status { daemon_running, active_session, uptime } => {
-                Ok(DaemonStatus {
-                    running: daemon_running,
-                    uptime_seconds: uptime,
-                    active_session,
-                    version: Some(env!("CARGO_PKG_VERSION").to_string()),
-                    socket_path: Some(socket_path),
-                })
-            }
-            IpcResponse::Error(e) => {
-                Err(anyhow::anyhow!("Failed to get daemon status: {}", e))
-            }
-            _ => {
-                Err(anyhow::anyhow!("Unexpected response from daemon"))
-            }
+            IpcResponse::Status {
+                daemon_running,
+                active_session,
+                uptime,
+            } => Ok(DaemonStatus {
+                running: daemon_running,
+                uptime_seconds: uptime,
+                active_session,
+                version: Some(env!("CARGO_PKG_VERSION").to_string()),
+                socket_path: Some(socket_path),
+            }),
+            IpcResponse::Error(e) => Err(anyhow::anyhow!("Failed to get daemon status: {}", e)),
+            _ => Err(anyhow::anyhow!("Unexpected response from daemon")),
         }
     }
 
@@ -172,8 +166,12 @@ impl DaemonService {
             std::env::current_exe()?.parent().map(|p| p.to_path_buf()),
             Some(PathBuf::from("/usr/local/bin")),
             Some(PathBuf::from("/usr/bin")),
-            std::env::var("CARGO_TARGET_DIR").ok().map(|p| PathBuf::from(p).join("debug")),
-            std::env::var("CARGO_TARGET_DIR").ok().map(|p| PathBuf::from(p).join("release")),
+            std::env::var("CARGO_TARGET_DIR")
+                .ok()
+                .map(|p| PathBuf::from(p).join("debug")),
+            std::env::var("CARGO_TARGET_DIR")
+                .ok()
+                .map(|p| PathBuf::from(p).join("release")),
         ];
 
         for path_opt in possible_paths.iter().flatten() {
@@ -182,7 +180,7 @@ impl DaemonService {
                 if full_path.exists() && full_path.is_file() {
                     return Ok(full_path);
                 }
-                
+
                 // Try with .exe extension on Windows
                 #[cfg(windows)]
                 {
@@ -248,9 +246,9 @@ mod tests {
     fn test_daemon_binary_search_paths() {
         let result = DaemonService::find_daemon_binary();
         assert!(result.is_ok());
-        
+
         let path = result.unwrap();
-        
+
         // Should either be a full path or just the binary name
         assert!(
             path.is_absolute() || path == PathBuf::from("tempo-daemon"),
@@ -262,7 +260,7 @@ mod tests {
     #[tokio::test]
     async fn test_pool_stats_placeholder() {
         let stats = DaemonService::get_pool_stats().await.unwrap();
-        
+
         // Test placeholder values
         assert_eq!(stats.total_connections, 5);
         assert_eq!(stats.active_connections, 2);
@@ -270,10 +268,10 @@ mod tests {
         assert_eq!(stats.max_connections, 10);
         assert_eq!(stats.connection_requests, 150);
         assert_eq!(stats.connection_timeouts, 0);
-        
+
         // Validate relationship
         assert_eq!(
-            stats.active_connections + stats.idle_connections, 
+            stats.active_connections + stats.idle_connections,
             stats.total_connections
         );
         assert!(stats.total_connections <= stats.max_connections);
@@ -282,12 +280,12 @@ mod tests {
     #[tokio::test]
     async fn test_daemon_operations_when_not_running() {
         // Test that daemon operations handle "not running" state gracefully
-        
+
         // Stop daemon when not running should succeed silently
-        let stop_result = DaemonService::stop_daemon().await;
+        let _stop_result = DaemonService::stop_daemon().await;
         // This may succeed (daemon not running) or fail (can't connect)
         // Either is acceptable behavior
-        
+
         // Activity heartbeat should handle daemon not running
         let heartbeat_result = DaemonService::send_activity_heartbeat().await;
         assert!(heartbeat_result.is_ok()); // Should silently ignore
@@ -302,7 +300,7 @@ mod tests {
             version: Some("0.2.0".to_string()),
             socket_path: Some(PathBuf::from("/tmp/tempo.sock")),
         };
-        
+
         assert!(status.running);
         assert_eq!(status.uptime_seconds, 3600);
         assert!(status.active_session.is_none());
@@ -320,14 +318,14 @@ mod tests {
             connection_requests: 500,
             connection_timeouts: 2,
         };
-        
+
         assert_eq!(pool_stats.total_connections, 10);
         assert_eq!(pool_stats.active_connections, 6);
         assert_eq!(pool_stats.idle_connections, 4);
         assert_eq!(pool_stats.max_connections, 20);
         assert_eq!(pool_stats.connection_requests, 500);
         assert_eq!(pool_stats.connection_timeouts, 2);
-        
+
         // Validate internal consistency
         assert_eq!(
             pool_stats.active_connections + pool_stats.idle_connections,

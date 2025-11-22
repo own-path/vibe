@@ -1,9 +1,9 @@
 use anyhow::Result;
 use rusqlite::{Connection, OpenFlags};
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use std::collections::VecDeque;
 
 /// A database connection with metadata
 #[derive(Debug)]
@@ -82,7 +82,7 @@ impl DatabasePool {
     /// Create a new database pool
     pub fn new<P: AsRef<Path>>(db_path: P, config: PoolConfig) -> Result<Self> {
         let db_path = db_path.as_ref().to_path_buf();
-        
+
         // Create parent directory if it doesn't exist
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -109,10 +109,12 @@ impl DatabasePool {
     /// Get a connection from the pool
     pub async fn get_connection(&self) -> Result<PooledConnectionGuard> {
         let start = Instant::now();
-        
+
         // Update stats
         {
-            let mut stats = self.stats.lock()
+            let mut stats = self
+                .stats
+                .lock()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire stats lock: {}", e))?;
             stats.connection_requests += 1;
         }
@@ -121,49 +123,68 @@ impl DatabasePool {
             // Try to get a connection from the pool
             if let Some(mut conn) = self.try_get_from_pool()? {
                 conn.mark_used();
-                
+
                 // Update stats
                 {
-                    let mut stats = self.stats.lock()
+                    let mut stats = self
+                        .stats
+                        .lock()
                         .map_err(|e| anyhow::anyhow!("Failed to acquire stats lock: {}", e))?;
                     stats.active_connections += 1;
                     stats.connections_in_pool = stats.connections_in_pool.saturating_sub(1);
                 }
 
-                return Ok(PooledConnectionGuard::new(conn, self.pool.clone(), self.stats.clone()));
+                return Ok(PooledConnectionGuard::new(
+                    conn,
+                    self.pool.clone(),
+                    self.stats.clone(),
+                ));
             }
 
             // If no connection available, try to create a new one
             if self.can_create_new_connection()? {
                 let conn = self.create_connection()?;
-                
+
                 // Update stats
                 {
-                    let mut stats = self.stats.lock()
+                    let mut stats = self
+                        .stats
+                        .lock()
                         .map_err(|e| anyhow::anyhow!("Failed to acquire stats lock: {}", e))?;
                     stats.total_connections_created += 1;
                     stats.active_connections += 1;
                 }
 
-                return Ok(PooledConnectionGuard::new(conn, self.pool.clone(), self.stats.clone()));
+                return Ok(PooledConnectionGuard::new(
+                    conn,
+                    self.pool.clone(),
+                    self.stats.clone(),
+                ));
             }
 
             // Check for timeout
             if start.elapsed() > self.config.connection_timeout {
-                let mut stats = self.stats.lock()
+                let mut stats = self
+                    .stats
+                    .lock()
                     .map_err(|e| anyhow::anyhow!("Failed to acquire stats lock: {}", e))?;
                 stats.connection_timeouts += 1;
-                return Err(anyhow::anyhow!("Connection timeout after {:?}", self.config.connection_timeout));
+                return Err(anyhow::anyhow!(
+                    "Connection timeout after {:?}",
+                    self.config.connection_timeout
+                ));
             }
 
-            // Wait a bit before retrying  
+            // Wait a bit before retrying
             tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
         }
     }
 
     /// Try to get a connection from the existing pool
     fn try_get_from_pool(&self) -> Result<Option<PooledConnection>> {
-        let mut pool = self.pool.lock()
+        let mut pool = self
+            .pool
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire pool lock: {}", e))?;
 
         // Clean up expired/idle connections first
@@ -175,7 +196,9 @@ impl DatabasePool {
 
     /// Check if we can create a new connection
     fn can_create_new_connection(&self) -> Result<bool> {
-        let stats = self.stats.lock()
+        let stats = self
+            .stats
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire stats lock: {}", e))?;
         Ok(stats.active_connections + stats.connections_in_pool < self.config.max_connections)
     }
@@ -204,10 +227,11 @@ impl DatabasePool {
     /// Clean up expired and idle connections
     fn cleanup_connections(&self, pool: &mut VecDeque<PooledConnection>) -> Result<()> {
         let mut to_remove = Vec::new();
-        
+
         for (index, conn) in pool.iter().enumerate() {
-            if conn.is_expired(self.config.max_lifetime) || 
-               conn.is_idle_too_long(self.config.max_idle_time) {
+            if conn.is_expired(self.config.max_lifetime)
+                || conn.is_idle_too_long(self.config.max_idle_time)
+            {
                 to_remove.push(index);
             }
         }
@@ -222,15 +246,19 @@ impl DatabasePool {
 
     /// Ensure minimum number of connections are available
     fn ensure_min_connections(&self) -> Result<()> {
-        let mut pool = self.pool.lock()
+        let mut pool = self
+            .pool
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire pool lock: {}", e))?;
 
         while pool.len() < self.config.min_connections {
             let conn = self.create_connection()?;
             pool.push_back(conn);
-            
+
             // Update stats
-            let mut stats = self.stats.lock()
+            let mut stats = self
+                .stats
+                .lock()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire stats lock: {}", e))?;
             stats.total_connections_created += 1;
             stats.connections_in_pool += 1;
@@ -241,22 +269,27 @@ impl DatabasePool {
 
     /// Return a connection to the pool
     fn return_connection(&self, conn: PooledConnection) -> Result<()> {
-        let mut pool = self.pool.lock()
+        let mut pool = self
+            .pool
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire pool lock: {}", e))?;
 
         // Check if we should keep this connection
-        if !conn.is_expired(self.config.max_lifetime) && 
-           pool.len() < self.config.max_connections {
+        if !conn.is_expired(self.config.max_lifetime) && pool.len() < self.config.max_connections {
             pool.push_back(conn);
-            
+
             // Update stats
-            let mut stats = self.stats.lock()
+            let mut stats = self
+                .stats
+                .lock()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire stats lock: {}", e))?;
             stats.connections_in_pool += 1;
             stats.active_connections = stats.active_connections.saturating_sub(1);
         } else {
             // Update stats - connection is being dropped
-            let mut stats = self.stats.lock()
+            let mut stats = self
+                .stats
+                .lock()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire stats lock: {}", e))?;
             stats.active_connections = stats.active_connections.saturating_sub(1);
         }
@@ -266,7 +299,9 @@ impl DatabasePool {
 
     /// Get current pool statistics
     pub fn stats(&self) -> Result<PoolStats> {
-        let stats = self.stats.lock()
+        let stats = self
+            .stats
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire stats lock: {}", e))?;
         Ok(PoolStats {
             total_connections_created: stats.total_connections_created,
@@ -279,14 +314,18 @@ impl DatabasePool {
 
     /// Close all connections in the pool
     pub fn close(&self) -> Result<()> {
-        let mut pool = self.pool.lock()
+        let mut pool = self
+            .pool
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire pool lock: {}", e))?;
         pool.clear();
-        
-        let mut stats = self.stats.lock()
+
+        let mut stats = self
+            .stats
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire stats lock: {}", e))?;
         stats.connections_in_pool = 0;
-        
+
         Ok(())
     }
 }
@@ -358,10 +397,10 @@ mod tests {
     fn test_pool_creation() {
         let temp_dir = tempdir().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        
+
         let pool = DatabasePool::new_with_defaults(&db_path).unwrap();
         let stats = pool.stats().unwrap();
-        
+
         // Should have minimum connections created
         assert!(stats.total_connections_created >= 2);
         assert_eq!(stats.connections_in_pool, 2);
@@ -371,13 +410,15 @@ mod tests {
     async fn test_get_connection() {
         let temp_dir = tempdir().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        
+
         let pool = DatabasePool::new_with_defaults(&db_path).unwrap();
         let conn = pool.get_connection().await.unwrap();
-        
+
         // Should be able to use the connection
-        conn.connection().execute("CREATE TABLE test (id INTEGER)", []).unwrap();
-        
+        conn.connection()
+            .execute("CREATE TABLE test (id INTEGER)", [])
+            .unwrap();
+
         let stats = pool.stats().unwrap();
         assert_eq!(stats.active_connections, 1);
     }
@@ -386,15 +427,15 @@ mod tests {
     async fn test_connection_return() {
         let temp_dir = tempdir().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        
+
         let pool = DatabasePool::new_with_defaults(&db_path).unwrap();
-        
+
         {
             let _conn = pool.get_connection().await.unwrap();
             let stats = pool.stats().unwrap();
             assert_eq!(stats.active_connections, 1);
         }
-        
+
         // Connection should be returned to pool
         let stats = pool.stats().unwrap();
         assert_eq!(stats.active_connections, 0);

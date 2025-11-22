@@ -22,18 +22,18 @@ impl Database {
 
         // Enable foreign key constraints
         connection.pragma_update(None, "foreign_keys", "ON")?;
-        
+
         // Set WAL mode for better concurrent access
         connection.pragma_update(None, "journal_mode", "WAL")?;
-        
+
         // Set synchronous to NORMAL for better performance
         connection.pragma_update(None, "synchronous", "NORMAL")?;
-        
+
         // Set cache size (negative value means KB)
         connection.pragma_update(None, "cache_size", "-64000")?;
 
         let db = Self { connection };
-        
+
         // Run migrations automatically
         crate::db::migrations::run_migrations(&db.connection)?;
 
@@ -64,14 +64,12 @@ impl Database {
     }
 
     pub fn get_schema_version(&self) -> Result<Option<i32>> {
-        let mut stmt = self.connection.prepare(
-            "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1"
-        )?;
-        
-        let version = stmt.query_row([], |row| {
-            Ok(row.get::<_, i32>(0)?)
-        }).optional()?;
-        
+        let mut stmt = self
+            .connection
+            .prepare("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")?;
+
+        let version = stmt.query_row([], |row| row.get::<_, i32>(0)).optional()?;
+
         Ok(version)
     }
 }

@@ -59,7 +59,7 @@ impl TimeEstimate {
     pub fn record_actual(&mut self, hours: f64) {
         self.actual_hours = Some(hours);
         self.updated_at = Utc::now();
-        
+
         if self.status == EstimateStatus::InProgress {
             self.status = EstimateStatus::Completed;
             self.completed_at = Some(Utc::now());
@@ -67,7 +67,8 @@ impl TimeEstimate {
     }
 
     pub fn variance(&self) -> Option<f64> {
-        self.actual_hours.map(|actual| actual - self.estimated_hours)
+        self.actual_hours
+            .map(|actual| actual - self.estimated_hours)
     }
 
     pub fn variance_percentage(&self) -> Option<f64> {
@@ -82,4 +83,3 @@ impl TimeEstimate {
         self.variance().map(|v| v < 0.0).unwrap_or(false)
     }
 }
-

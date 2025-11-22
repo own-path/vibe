@@ -1645,6 +1645,7 @@ async fn remove_tag_from_project(project_name: String, tag_name: String) -> Resu
 }
 
 // Bulk session operations
+#[allow(dead_code)]
 async fn bulk_update_sessions_project(
     session_ids: Vec<i64>,
     new_project_name: String,
@@ -1687,6 +1688,7 @@ async fn bulk_update_sessions_project(
     Ok(())
 }
 
+#[allow(dead_code)]
 async fn bulk_delete_sessions(session_ids: Vec<i64>) -> Result<()> {
     let db_path = get_database_path()?;
     let db = Database::new(&db_path)?;
@@ -1723,15 +1725,15 @@ async fn launch_dashboard() -> Result<()> {
     }
 
     // Setup terminal with better error handling
-    enable_raw_mode().context("Failed to enable raw mode - terminal may not support interactive features")?;
+    enable_raw_mode()
+        .context("Failed to enable raw mode - terminal may not support interactive features")?;
     let mut stdout = io::stdout();
-    
+
     execute!(stdout, EnterAlternateScreen)
         .context("Failed to enter alternate screen - terminal may not support full-screen mode")?;
-    
+
     let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)
-        .context("Failed to initialize terminal backend")?;
+    let mut terminal = Terminal::new(backend).context("Failed to initialize terminal backend")?;
 
     // Clear the screen first
     terminal.clear().context("Failed to clear terminal")?;
@@ -1746,7 +1748,7 @@ async fn launch_dashboard() -> Result<()> {
 
     // Always restore terminal, even if there was an error
     let cleanup_result = cleanup_terminal(&mut terminal);
-    
+
     // Return the original result, but log cleanup errors
     if let Err(e) = cleanup_result {
         eprintln!("Warning: Failed to restore terminal: {}", e);
@@ -1764,7 +1766,7 @@ async fn show_dashboard_fallback() -> Result<()> {
     println!("📊 Tempo Dashboard (Text Mode)");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     println!();
-    
+
     // Get basic status information
     if is_daemon_running() {
         println!("🟢 Daemon Status: Running");
@@ -1782,12 +1784,21 @@ async fn show_dashboard_fallback() -> Result<()> {
             Ok(IpcResponse::ActiveSession(Some(session))) => {
                 println!("⏱️  Active Session:");
                 println!("   Started: {}", session.start_time.format("%H:%M:%S"));
-                println!("   Duration: {}", format_duration_simple((chrono::Utc::now().timestamp() - session.start_time.timestamp()) - session.paused_duration.num_seconds()));
+                println!(
+                    "   Duration: {}",
+                    format_duration_simple(
+                        (chrono::Utc::now().timestamp() - session.start_time.timestamp())
+                            - session.paused_duration.num_seconds()
+                    )
+                );
                 println!("   Context: {}", session.context);
                 println!();
-                
+
                 // Get project info
-                match client.send_message(&IpcMessage::GetProject(session.project_id)).await {
+                match client
+                    .send_message(&IpcMessage::GetProject(session.project_id))
+                    .await
+                {
                     Ok(IpcResponse::Project(Some(project))) => {
                         println!("📁 Current Project: {}", project.name);
                         println!("   Path: {}", project.path.display());
@@ -1809,12 +1820,19 @@ async fn show_dashboard_fallback() -> Result<()> {
         // Get daily stats
         let today = chrono::Local::now().date_naive();
         match client.send_message(&IpcMessage::GetDailyStats(today)).await {
-            Ok(IpcResponse::DailyStats { sessions_count, total_seconds, avg_seconds }) => {
+            Ok(IpcResponse::DailyStats {
+                sessions_count,
+                total_seconds,
+                avg_seconds,
+            }) => {
                 println!("📈 Today's Summary:");
                 println!("   Sessions: {}", sessions_count);
                 println!("   Total time: {}", format_duration_simple(total_seconds));
                 if sessions_count > 0 {
-                    println!("   Average session: {}", format_duration_simple(avg_seconds));
+                    println!(
+                        "   Average session: {}",
+                        format_duration_simple(avg_seconds)
+                    );
                 }
                 let progress = (total_seconds as f64 / (8.0 * 3600.0)) * 100.0;
                 println!("   Daily goal (8h): {:.1}%", progress);
@@ -1835,7 +1853,7 @@ async fn show_dashboard_fallback() -> Result<()> {
     println!("   • Terminal.app, iTerm2, or other terminal emulators");
     println!("   • SSH sessions with TTY allocation (ssh -t)");
     println!("   • Interactive shell environments");
-    
+
     Ok(())
 }
 
@@ -1843,7 +1861,7 @@ fn format_duration_simple(seconds: i64) -> String {
     let hours = seconds / 3600;
     let minutes = (seconds % 3600) / 60;
     let secs = seconds % 60;
-    
+
     if hours > 0 {
         format!("{}h {}m {}s", hours, minutes, secs)
     } else if minutes > 0 {
@@ -1853,8 +1871,8 @@ fn format_duration_simple(seconds: i64) -> String {
     }
 }
 
-fn cleanup_terminal<B>(terminal: &mut Terminal<B>) -> Result<()> 
-where 
+fn cleanup_terminal<B>(terminal: &mut Terminal<B>) -> Result<()>
+where
     B: ratatui::backend::Backend + std::io::Write,
 {
     // Restore terminal
@@ -2984,6 +3002,7 @@ async fn view_client_report(_id: i64) -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn should_quit(event: crossterm::event::Event) -> bool {
     match event {
         crossterm::event::Event::Key(key) if key.kind == crossterm::event::KeyEventKind::Press => {
@@ -3120,6 +3139,7 @@ async fn show_pool_stats() -> Result<()> {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct GitHubRelease {
     tag_name: String,
     name: String,
@@ -3130,7 +3150,7 @@ struct GitHubRelease {
 
 async fn handle_update(check: bool, force: bool, verbose: bool) -> Result<()> {
     let current_version = env!("CARGO_PKG_VERSION");
-    
+
     if verbose {
         println!("🔍 Current version: v{}", current_version);
         println!("📡 Checking for updates...");
@@ -3160,24 +3180,27 @@ async fn handle_update(check: bool, force: bool, verbose: bool) -> Result<()> {
         .context("Failed to parse release information")?;
 
     let latest_version = release.tag_name.trim_start_matches('v');
-    
+
     if verbose {
         println!("📦 Latest version: v{}", latest_version);
         println!("📅 Released: {}", release.published_at);
     }
 
     // Compare versions
-    let current_semver = semver::Version::parse(current_version)
-        .context("Failed to parse current version")?;
-    let latest_semver = semver::Version::parse(latest_version)
-        .context("Failed to parse latest version")?;
+    let current_semver =
+        semver::Version::parse(current_version).context("Failed to parse current version")?;
+    let latest_semver =
+        semver::Version::parse(latest_version).context("Failed to parse latest version")?;
 
     if current_semver >= latest_semver && !force {
-        println!("✅ You're already running the latest version (v{})", current_version);
+        println!(
+            "✅ You're already running the latest version (v{})",
+            current_version
+        );
         if check {
             return Ok(());
         }
-        
+
         if !force {
             println!("💡 Use --force to reinstall the current version");
             return Ok(());
@@ -3186,9 +3209,12 @@ async fn handle_update(check: bool, force: bool, verbose: bool) -> Result<()> {
 
     if check {
         if current_semver < latest_semver {
-            println!("📦 Update available: v{} → v{}", current_version, latest_version);
+            println!(
+                "📦 Update available: v{} → v{}",
+                current_version, latest_version
+            );
             println!("🔗 Run `tempo update` to install the latest version");
-            
+
             if verbose && !release.body.is_empty() {
                 println!("\n📝 Release Notes:");
                 println!("{}", release.body);
@@ -3198,37 +3224,41 @@ async fn handle_update(check: bool, force: bool, verbose: bool) -> Result<()> {
     }
 
     if current_semver < latest_semver || force {
-        println!("⬇️  Updating tempo from v{} to v{}", current_version, latest_version);
-        
+        println!(
+            "⬇️  Updating tempo from v{} to v{}",
+            current_version, latest_version
+        );
+
         if verbose {
             println!("🔧 Installing via cargo...");
         }
-        
+
         // Update using cargo install
         let mut cmd = Command::new("cargo");
-        cmd.args(&["install", "tempo-cli", "--force"]);
-        
+        cmd.args(["install", "tempo-cli", "--force"]);
+
         if verbose {
-            cmd.stdout(Stdio::inherit())
-               .stderr(Stdio::inherit());
+            cmd.stdout(Stdio::inherit()).stderr(Stdio::inherit());
         } else {
-            cmd.stdout(Stdio::null())
-               .stderr(Stdio::null());
+            cmd.stdout(Stdio::null()).stderr(Stdio::null());
         }
 
-        let status = cmd.status()
+        let status = cmd
+            .status()
             .context("Failed to run cargo install command")?;
 
         if status.success() {
             println!("✅ Successfully updated tempo to v{}", latest_version);
             println!("🎉 You can now use the latest features!");
-            
+
             if !release.body.is_empty() && verbose {
                 println!("\n📝 What's new in v{}:", latest_version);
                 println!("{}", release.body);
             }
         } else {
-            return Err(anyhow::anyhow!("Failed to install update. Try running manually: cargo install tempo-cli --force"));
+            return Err(anyhow::anyhow!(
+                "Failed to install update. Try running manually: cargo install tempo-cli --force"
+            ));
         }
     }
 

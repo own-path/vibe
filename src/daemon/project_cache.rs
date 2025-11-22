@@ -45,7 +45,7 @@ impl ProjectCache {
         if let Some(id) = project.id {
             let path = project.path.clone();
             let entry = ProjectEntry::from(&project);
-            
+
             // Store in both indices
             self.by_path.insert(path.clone(), entry);
             self.by_id.insert(id, path);
@@ -59,8 +59,7 @@ impl ProjectCache {
 
     /// Get a project by ID
     pub fn get_by_id(&self, id: i64) -> Option<&ProjectEntry> {
-        self.by_id.get(&id)
-            .and_then(|path| self.by_path.get(path))
+        self.by_id.get(&id).and_then(|path| self.by_path.get(path))
     }
 
     /// Check if a project exists by path
@@ -119,8 +118,8 @@ impl ProjectCache {
     }
 
     /// Update a project entry (useful for status changes)
-    pub fn update_entry<F>(&mut self, path: &Path, updater: F) -> bool 
-    where 
+    pub fn update_entry<F>(&mut self, path: &Path, updater: F) -> bool
+    where
         F: FnOnce(&mut ProjectEntry),
     {
         if let Some(entry) = self.by_path.get_mut(path) {
@@ -167,9 +166,9 @@ mod tests {
     fn test_cache_insert_and_lookup() {
         let mut cache = ProjectCache::new();
         let project = create_test_project(1, "Test Project", "/test/path");
-        
+
         cache.insert(project);
-        
+
         assert!(cache.contains_id(1));
         assert!(cache.contains_path(&PathBuf::from("/test/path")));
         assert_eq!(cache.len(), 1);
@@ -179,9 +178,9 @@ mod tests {
     fn test_cache_lookup_by_path() {
         let mut cache = ProjectCache::new();
         let project = create_test_project(1, "Test Project", "/test/path");
-        
+
         cache.insert(project);
-        
+
         let entry = cache.get_by_path(&PathBuf::from("/test/path")).unwrap();
         assert_eq!(entry.id, 1);
         assert_eq!(entry.name, "Test Project");
@@ -191,9 +190,9 @@ mod tests {
     fn test_cache_lookup_by_id() {
         let mut cache = ProjectCache::new();
         let project = create_test_project(1, "Test Project", "/test/path");
-        
+
         cache.insert(project);
-        
+
         let entry = cache.get_by_id(1).unwrap();
         assert_eq!(entry.id, 1);
         assert_eq!(entry.name, "Test Project");
@@ -203,10 +202,10 @@ mod tests {
     fn test_cache_remove() {
         let mut cache = ProjectCache::new();
         let project = create_test_project(1, "Test Project", "/test/path");
-        
+
         cache.insert(project);
         assert_eq!(cache.len(), 1);
-        
+
         let removed = cache.remove_by_path(&PathBuf::from("/test/path"));
         assert!(removed.is_some());
         assert_eq!(cache.len(), 0);
@@ -217,15 +216,15 @@ mod tests {
     fn test_cache_update() {
         let mut cache = ProjectCache::new();
         let project = create_test_project(1, "Test Project", "/test/path");
-        
+
         cache.insert(project);
-        
+
         let updated = cache.update_entry(&PathBuf::from("/test/path"), |entry| {
             entry.name = "Updated Project".to_string();
         });
-        
+
         assert!(updated);
-        
+
         let entry = cache.get_by_path(&PathBuf::from("/test/path")).unwrap();
         assert_eq!(entry.name, "Updated Project");
     }

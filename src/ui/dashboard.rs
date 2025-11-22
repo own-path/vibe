@@ -141,12 +141,12 @@ impl Dashboard {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(1),  // Top bar (Logo/Status)
-                Constraint::Length(1),  // Spacer
-                Constraint::Length(10), // Main Status / Activity Stream
-                Constraint::Length(1),  // Spacer
-                Constraint::Min(0),     // Details / Metrics
-                Constraint::Length(1),  // Bottom bar (Input/Help)
+                Constraint::Length(1), // Top bar (Logo/Status)
+                Constraint::Length(1), // Spacer
+                Constraint::Length(7), // Main Status / Activity Stream (reduced from 10)
+                Constraint::Length(1), // Spacer
+                Constraint::Min(0),    // Details / Metrics (flexible)
+                Constraint::Length(1), // Bottom bar (Input/Help)
             ])
             .split(f.size());
 
@@ -166,6 +166,40 @@ impl Dashboard {
         if self.show_project_switcher {
             self.render_project_switcher(f, f.size());
         }
+    }
+
+    fn render_bottom_bar(&self, f: &mut Frame, area: Rect) {
+        let help_text = if self.show_project_switcher {
+            vec![
+                Span::styled(
+                    "[Q]",
+                    Style::default()
+                        .fg(ColorScheme::CLEAN_ACCENT)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" Close  "),
+                Span::raw("[↑/↓] Navigate  "),
+                Span::raw("[Enter] Select"),
+            ]
+        } else {
+            vec![
+                Span::styled(
+                    "[Q]",
+                    Style::default()
+                        .fg(ColorScheme::CLEAN_ACCENT)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" Quit  "),
+                Span::raw("[P] Projects  "),
+                Span::raw("[R] Refresh"),
+            ]
+        };
+
+        let help_paragraph = Paragraph::new(Line::from(help_text))
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(ColorScheme::GRAY_TEXT));
+
+        f.render_widget(help_paragraph, area);
     }
 
     fn render_top_bar(&self, f: &mut Frame, area: Rect) {
@@ -404,24 +438,6 @@ impl Dashboard {
                 chunks[1],
             );
         }
-    }
-
-    fn render_bottom_bar(&self, f: &mut Frame, area: Rect) {
-        let help_text = if self.show_project_switcher {
-            "Select Project: Up/Down | Enter to Confirm | Esc to Cancel"
-        } else {
-            "> Press 'p' for projects, 'q' to quit"
-        };
-
-        let help = Paragraph::new(help_text)
-            .style(Style::default().fg(ColorScheme::GRAY_TEXT))
-            .block(
-                Block::default()
-                    .borders(Borders::TOP)
-                    .border_style(Style::default().fg(ColorScheme::GRAY_TEXT)),
-            );
-
-        f.render_widget(help, area);
     }
 
     fn render_project_switcher(&self, f: &mut Frame, area: Rect) {

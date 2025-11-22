@@ -68,4 +68,3 @@ impl ClientReport {
         self.status = ReportStatus::Paid;
     }
 }
-

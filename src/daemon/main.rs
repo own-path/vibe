@@ -4,13 +4,13 @@ use std::sync::Arc;
 use tokio::signal;
 use tokio::sync::RwLock;
 
+mod project_cache;
 mod server;
 mod state;
-mod project_cache;
 
 use server::DaemonServer;
 use state::{start_idle_checker, DaemonState};
-use tempo_cli::db::{initialize_database, initialize_pool, get_connection, Database};
+use tempo_cli::db::{get_connection, initialize_database, initialize_pool, Database};
 use tempo_cli::models::Config;
 use tempo_cli::utils::get_config_dir;
 use tempo_cli::utils::ipc::{get_socket_path, remove_pid_file, write_pid_file};
@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
         error!("Failed to initialize database pool: {}", e);
         return Err(e);
     }
-    
+
     // Get a connection for daemon state initialization
     let db_path = get_data_dir()?.join("data.db");
     let db = match initialize_database(&db_path) {

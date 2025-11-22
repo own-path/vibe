@@ -101,7 +101,7 @@ impl Goal {
     pub fn update_progress(&mut self, hours: f64) {
         self.current_progress += hours;
         self.updated_at = Utc::now();
-        
+
         if self.current_progress >= self.target_hours && self.status == GoalStatus::Active {
             self.status = GoalStatus::Completed;
         }
@@ -111,22 +111,21 @@ impl Goal {
         if self.name.is_empty() {
             return Err(anyhow::anyhow!("Goal name cannot be empty"));
         }
-        
+
         if self.target_hours <= 0.0 {
             return Err(anyhow::anyhow!("Target hours must be greater than 0"));
         }
-        
+
         if let (Some(start), Some(end)) = (self.start_date, self.end_date) {
             if start > end {
                 return Err(anyhow::anyhow!("Start date must be before end date"));
             }
         }
-        
+
         if self.current_progress < 0.0 {
             return Err(anyhow::anyhow!("Current progress cannot be negative"));
         }
-        
+
         Ok(())
     }
 }
-

@@ -72,10 +72,9 @@ mod tests {
 
     #[test]
     fn test_migrations() {
-        let conn = Connection::open_in_memory()
-            .expect("Failed to create in-memory database for testing");
-        run_migrations(&conn)
-            .expect("Failed to run migrations in test");
+        let conn =
+            Connection::open_in_memory().expect("Failed to create in-memory database for testing");
+        run_migrations(&conn).expect("Failed to run migrations in test");
 
         // Verify tables exist
         let tables: Vec<String> = conn
