@@ -901,47 +901,21 @@ async fn delete_tag(name: String) -> Result<()> {
 async fn show_config() -> Result<()> {
     let config = load_config()?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m           \x1b[1;37mConfiguration\x1b[0m                  \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m idle_timeout_minutes:  \x1b[33m{:<16}\x1b[0m \x1b[36m│\x1b[0m",
-        config.idle_timeout_minutes
-    );
-    println!(
-        "\x1b[36m│\x1b[0m auto_pause_enabled:    \x1b[33m{:<16}\x1b[0m \x1b[36m│\x1b[0m",
-        config.auto_pause_enabled
-    );
-    println!(
-        "\x1b[36m│\x1b[0m default_context:       \x1b[33m{:<16}\x1b[0m \x1b[36m│\x1b[0m",
-        config.default_context
-    );
-    println!(
-        "\x1b[36m│\x1b[0m max_session_hours:     \x1b[33m{:<16}\x1b[0m \x1b[36m│\x1b[0m",
-        config.max_session_hours
-    );
-    println!(
-        "\x1b[36m│\x1b[0m backup_enabled:        \x1b[33m{:<16}\x1b[0m \x1b[36m│\x1b[0m",
-        config.backup_enabled
-    );
-    println!(
-        "\x1b[36m│\x1b[0m log_level:             \x1b[33m{:<16}\x1b[0m \x1b[36m│\x1b[0m",
-        config.log_level
-    );
+    CliFormatter::print_section_header("Configuration");
+    CliFormatter::print_field("idle_timeout_minutes", &config.idle_timeout_minutes.to_string(), Some("yellow"));
+    CliFormatter::print_field("auto_pause_enabled", &config.auto_pause_enabled.to_string(), Some("yellow"));
+    CliFormatter::print_field("default_context", &config.default_context, Some("yellow"));
+    CliFormatter::print_field("max_session_hours", &config.max_session_hours.to_string(), Some("yellow"));
+    CliFormatter::print_field("backup_enabled", &config.backup_enabled.to_string(), Some("yellow"));
+    CliFormatter::print_field("log_level", &config.log_level, Some("yellow"));
 
     if !config.custom_settings.is_empty() {
-        println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
-        println!("\x1b[36m│\x1b[0m \x1b[1;37mCustom Settings:\x1b[0m                      \x1b[36m│\x1b[0m");
+        println!();
+        CliFormatter::print_field_bold("Custom Settings", "", None);
         for (key, value) in &config.custom_settings {
-            println!(
-                "\x1b[36m│\x1b[0m {:<20} \x1b[33m{:<16}\x1b[0m \x1b[36m│\x1b[0m",
-                truncate_string(key, 20),
-                truncate_string(value, 16)
-            );
+            CliFormatter::print_field(key, value, Some("yellow"));
         }
     }
-
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
 
     Ok(())
 }
@@ -1011,19 +985,9 @@ async fn set_config(key: String, value: String) -> Result<()> {
     config.validate()?;
     save_config(&config)?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m        \x1b[1;37mConfiguration Updated\x1b[0m             \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m {:<20} \x1b[32m{:<16}\x1b[0m \x1b[36m│\x1b[0m",
-        truncate_string(&key, 20),
-        truncate_string(&display_value, 16)
-    );
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[32m✓ Configuration saved successfully\x1b[0m      \x1b[36m│\x1b[0m"
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_section_header("Configuration Updated");
+    CliFormatter::print_field(&key, &display_value, Some("green"));
+    CliFormatter::print_success("Configuration saved successfully");
 
     Ok(())
 }
@@ -1032,20 +996,9 @@ async fn reset_config() -> Result<()> {
     let default_config = crate::models::Config::default();
     save_config(&default_config)?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m         \x1b[1;37mConfiguration Reset\x1b[0m              \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[32m✓ Configuration reset to defaults\x1b[0m       \x1b[36m│\x1b[0m"
-    );
-    println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[37mView current config:\x1b[0m                   \x1b[36m│\x1b[0m"
-    );
-    println!(
-        "\x1b[36m│\x1b[0m   \x1b[96mtempo config show\x1b[0m                   \x1b[36m│\x1b[0m"
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_section_header("Configuration Reset");
+    CliFormatter::print_success("Configuration reset to defaults");
+    CliFormatter::print_info("View current config: tempo config show");
 
     Ok(())
 }
@@ -1099,16 +1052,10 @@ async fn list_sessions(limit: Option<usize>, project_filter: Option<String>) -> 
         sessions
     };
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m         \x1b[1;37mRecent Sessions\x1b[0m                 \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    CliFormatter::print_section_header("Recent Sessions");
 
     for session in &filtered_sessions {
-        let status_icon = if session.end_time.is_some() {
-            "✅"
-        } else {
-            "🔄"
-        };
+        let status_icon = if session.end_time.is_some() { "✅" } else { "🔄" };
         let duration = if let Some(end) = session.end_time {
             (end - session.start_time).num_seconds() - session.paused_duration.num_seconds()
         } else {
@@ -1116,38 +1063,20 @@ async fn list_sessions(limit: Option<usize>, project_filter: Option<String>) -> 
         };
 
         let context_color = match session.context {
-            crate::models::SessionContext::Terminal => "\x1b[96m",
-            crate::models::SessionContext::IDE => "\x1b[95m",
-            crate::models::SessionContext::Linked => "\x1b[93m",
-            crate::models::SessionContext::Manual => "\x1b[94m",
+            crate::models::SessionContext::Terminal => "cyan",
+            crate::models::SessionContext::IDE => "magenta",
+            crate::models::SessionContext::Linked => "yellow",
+            crate::models::SessionContext::Manual => "blue",
         };
 
-        println!(
-            "\x1b[36m│\x1b[0m {} \x1b[1;37m{:<32}\x1b[0m \x1b[36m│\x1b[0m",
-            status_icon,
-            format!("Session {}", session.id.unwrap_or(0))
-        );
-        println!(
-            "\x1b[36m│\x1b[0m    Duration: \x1b[32m{:<24}\x1b[0m \x1b[36m│\x1b[0m",
-            format_duration_clean(duration)
-        );
-        println!(
-            "\x1b[36m│\x1b[0m    Context:  {}{:<24}\x1b[0m \x1b[36m│\x1b[0m",
-            context_color, session.context
-        );
-        println!(
-            "\x1b[36m│\x1b[0m    Started:  \x1b[37m{:<24}\x1b[0m \x1b[36m│\x1b[0m",
-            session.start_time.format("%Y-%m-%d %H:%M:%S")
-        );
-        println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
+        println!("  {} {}", status_icon, ansi_color("white", &format!("Session {}", session.id.unwrap_or(0)), true));
+        CliFormatter::print_field("    Duration", &format_duration_clean(duration), Some("green"));
+        CliFormatter::print_field("    Context", &session.context.to_string(), Some(context_color));
+        CliFormatter::print_field("    Started", &session.start_time.format("%Y-%m-%d %H:%M:%S").to_string(), None);
+        println!();
     }
 
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[1;37mShowing:\x1b[0m {:<28} \x1b[36m│\x1b[0m",
-        format!("{} recent sessions", filtered_sessions.len())
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    println!("  {}: {}", "Showing".dimmed(), format!("{} recent sessions", filtered_sessions.len()));
 
     Ok(())
 }
