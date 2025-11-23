@@ -3,7 +3,7 @@ use super::{
     GoalAction, IssueAction, ProjectAction, SessionAction, TagAction, TemplateAction,
     WorkspaceAction,
 };
-use crate::cli::formatter::{CliFormatter, format_duration_clean, truncate_string};
+use crate::cli::formatter::{format_duration_clean, truncate_string, CliFormatter};
 use crate::cli::reports::ReportGenerator;
 use crate::db::advanced_queries::{
     GitBranchQueries, GoalQueries, InsightQueries, TemplateQueries, TimeEstimateQueries,
@@ -520,17 +520,33 @@ fn print_formatted_session(session: &crate::utils::ipc::SessionInfo) -> Result<(
     CliFormatter::print_section_header("Current Session");
     CliFormatter::print_status("Active", true);
     CliFormatter::print_field_bold("Project", &session.project_name, Some("yellow"));
-    CliFormatter::print_field_bold("Duration", &format_duration_clean(session.duration), Some("green"));
-    CliFormatter::print_field("Started", &session.start_time.format("%H:%M:%S").to_string(), None);
-    CliFormatter::print_field("Context", &session.context, Some(get_context_color(&session.context)));
-    CliFormatter::print_field("Path", &session.project_path.to_string_lossy(), Some("gray"));
+    CliFormatter::print_field_bold(
+        "Duration",
+        &format_duration_clean(session.duration),
+        Some("green"),
+    );
+    CliFormatter::print_field(
+        "Started",
+        &session.start_time.format("%H:%M:%S").to_string(),
+        None,
+    );
+    CliFormatter::print_field(
+        "Context",
+        &session.context,
+        Some(get_context_color(&session.context)),
+    );
+    CliFormatter::print_field(
+        "Path",
+        &session.project_path.to_string_lossy(),
+        Some("gray"),
+    );
     Ok(())
 }
 
 fn get_context_color(context: &str) -> &str {
     match context {
         "terminal" => "cyan",
-        "ide" => "magenta", 
+        "ide" => "magenta",
         "linked" => "yellow",
         "manual" => "blue",
         _ => "white",
@@ -539,10 +555,13 @@ fn get_context_color(context: &str) -> &str {
 
 fn print_formatted_report(report: &crate::cli::reports::TimeReport) -> Result<()> {
     CliFormatter::print_section_header("Time Report");
-    
+
     for (project_name, project_summary) in &report.projects {
-        CliFormatter::print_project_entry(project_name, &format_duration_clean(project_summary.total_duration));
-        
+        CliFormatter::print_project_entry(
+            project_name,
+            &format_duration_clean(project_summary.total_duration),
+        );
+
         for (context, duration) in &project_summary.contexts {
             CliFormatter::print_context_entry(context, &format_duration_clean(*duration));
         }
@@ -579,8 +598,16 @@ fn print_daemon_status(uptime: u64, active_session: Option<&crate::utils::ipc::S
         println!();
         CliFormatter::print_field_bold("Active Session", "", None);
         CliFormatter::print_field("  Project", &session.project_name, Some("yellow"));
-        CliFormatter::print_field("  Duration", &format_duration_clean(session.duration), Some("green"));
-        CliFormatter::print_field("  Context", &session.context, Some(get_context_color(&session.context)));
+        CliFormatter::print_field(
+            "  Duration",
+            &format_duration_clean(session.duration),
+            Some("green"),
+        );
+        CliFormatter::print_field(
+            "  Context",
+            &session.context,
+            Some(get_context_color(&session.context)),
+        );
     } else {
         CliFormatter::print_field("Session", "No active session", Some("yellow"));
     }
@@ -672,14 +699,10 @@ async fn list_projects(include_archived: bool, tag_filter: Option<String>) -> Re
     let projects = ProjectQueries::list_all(&db.connection, include_archived)?;
 
     if projects.is_empty() {
-        println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-        println!("\x1b[36m│\x1b[0m              \x1b[1;37mNo Projects\x1b[0m                 \x1b[36m│\x1b[0m");
-        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-        println!("\x1b[36m│\x1b[0m No projects found.                      \x1b[36m│\x1b[0m");
-        println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
-        println!("\x1b[36m│\x1b[0m \x1b[37mCreate a project:\x1b[0m                      \x1b[36m│\x1b[0m");
-        println!("\x1b[36m│\x1b[0m   \x1b[96mtempo init [project-name]\x1b[0m           \x1b[36m│\x1b[0m");
-        println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+        CliFormatter::print_section_header("No Projects");
+        CliFormatter::print_empty_state("No projects found.");
+        println!();
+        CliFormatter::print_info("Create a project: tempo init [project-name]");
         return Ok(());
     }
 
@@ -691,76 +714,61 @@ async fn list_projects(include_archived: bool, tag_filter: Option<String>) -> Re
         projects
     };
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m              \x1b[1;37mProjects\x1b[0m                    \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    CliFormatter::print_section_header("Projects");
 
     for project in &filtered_projects {
         let status_icon = if project.is_archived { "[A]" } else { "[P]" };
-        let status_color = if project.is_archived {
-            "\x1b[90m"
-        } else {
-            "\x1b[37m"
-        };
         let git_indicator = if project.git_hash.is_some() {
             " (git)"
         } else {
             ""
         };
 
+        let project_name = format!("{} {}{}", status_icon, project.name, git_indicator);
         println!(
-            "\x1b[36m│\x1b[0m {} {}{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-            status_icon,
-            status_color,
-            format!("{}{}", truncate_string(&project.name, 20), git_indicator)
+            "  {}",
+            if project.is_archived {
+                project_name.dimmed()
+            } else {
+                project_name
+            }
         );
 
         if let Some(description) = &project.description {
-            println!(
-                "\x1b[36m│\x1b[0m   \x1b[2;37m{:<35}\x1b[0m \x1b[36m│\x1b[0m",
-                truncate_string(description, 35)
-            );
+            println!("     {}", truncate_string(description, 60).dimmed());
         }
 
         let path_display = project.path.to_string_lossy();
-        if path_display.len() > 35 {
-            let home_dir = dirs::home_dir();
-            let display_path = if let Some(home) = home_dir {
-                if let Ok(stripped) = project.path.strip_prefix(&home) {
-                    format!("~/{}", stripped.display())
-                } else {
-                    path_display.to_string()
-                }
+        let home_dir = dirs::home_dir();
+        let display_path = if let Some(home) = home_dir {
+            if let Ok(stripped) = project.path.strip_prefix(&home) {
+                format!("~/{}", stripped.display())
             } else {
                 path_display.to_string()
-            };
-            println!(
-                "\x1b[36m│\x1b[0m   \x1b[90m{:<35}\x1b[0m \x1b[36m│\x1b[0m",
-                truncate_string(&display_path, 35)
-            );
+            }
         } else {
-            println!(
-                "\x1b[36m│\x1b[0m   \x1b[90m{:<35}\x1b[0m \x1b[36m│\x1b[0m",
-                truncate_string(&path_display, 35)
-            );
-        }
-
-        println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
+            path_display.to_string()
+        };
+        println!("     {}", truncate_string(&display_path, 60).dimmed());
+        println!();
     }
 
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
     println!(
-        "\x1b[36m│\x1b[0m \x1b[1;37mTotal:\x1b[0m {:<30} \x1b[36m│\x1b[0m",
+        "  {}: {}",
+        "Total".dimmed(),
         format!("{} projects", filtered_projects.len())
     );
     if include_archived {
         let active_count = filtered_projects.iter().filter(|p| !p.is_archived).count();
         let archived_count = filtered_projects.iter().filter(|p| p.is_archived).count();
-        println!("\x1b[36m│\x1b[0m \x1b[37mActive:\x1b[0m {:<15} \x1b[90mArchived:\x1b[0m {:<8} \x1b[36m│\x1b[0m", 
-            active_count, archived_count
+        println!(
+            "  {}: {}  {}: {}",
+            "Active".dimmed(),
+            active_count,
+            "Archived".dimmed(),
+            archived_count
         );
     }
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
 
     Ok(())
 }
@@ -2133,32 +2141,18 @@ async fn update_goal_progress(id: i64, hours: f64) -> Result<()> {
     let db = Database::new(&db_path)?;
 
     GoalQueries::update_progress(&db.connection, id, hours)?;
-    println!(
-        "\x1b[32m✓ Updated goal {} progress by {} hours\x1b[0m",
-        id, hours
-    );
+    CliFormatter::print_success(&format!("Updated goal {} progress by {} hours", id, hours));
     Ok(())
 }
 
 async fn show_insights(period: Option<String>, project: Option<String>) -> Result<()> {
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m        \x1b[1;37mProductivity Insights\x1b[0m              \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Period:   \x1b[33m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        period.as_deref().unwrap_or("all")
-    );
+    CliFormatter::print_section_header("Productivity Insights");
+    CliFormatter::print_field("Period", period.as_deref().unwrap_or("all"), Some("yellow"));
     if let Some(proj) = project {
-        println!(
-            "\x1b[36m│\x1b[0m Project:  \x1b[33m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(&proj, 27)
-        );
+        CliFormatter::print_field("Project", &truncate_string(&proj, 40), Some("yellow"));
     }
-    println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[33m⚠  Insights calculation in progress...\x1b[0m  \x1b[36m│\x1b[0m"
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    println!();
+    CliFormatter::print_warning("Insights calculation in progress...");
     Ok(())
 }
 
@@ -2182,25 +2176,22 @@ async fn show_summary(period: String, from: Option<String>) -> Result<()> {
         _ => return Err(anyhow::anyhow!("Invalid period. Use 'week' or 'month'")),
     };
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m         \x1b[1;37m{} Summary\x1b[0m                  \x1b[36m│\x1b[0m",
-        period
+    CliFormatter::print_section_header(&format!("{} Summary", period));
+    CliFormatter::print_field(
+        "Total Hours",
+        &format!("{:.1}h", insight_data.total_hours),
+        Some("green"),
     );
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Total Hours:  \x1b[32m{:<23}\x1b[0m \x1b[36m│\x1b[0m",
-        format!("{:.1}h", insight_data.total_hours)
+    CliFormatter::print_field(
+        "Sessions",
+        &insight_data.sessions_count.to_string(),
+        Some("yellow"),
     );
-    println!(
-        "\x1b[36m│\x1b[0m Sessions:     \x1b[33m{:<23}\x1b[0m \x1b[36m│\x1b[0m",
-        insight_data.sessions_count
+    CliFormatter::print_field(
+        "Avg Session",
+        &format!("{:.1}h", insight_data.avg_session_duration),
+        Some("yellow"),
     );
-    println!(
-        "\x1b[36m│\x1b[0m Avg Session:  \x1b[33m{:<23}\x1b[0m \x1b[36m│\x1b[0m",
-        format!("{:.1}h", insight_data.avg_session_duration)
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
     Ok(())
 }
 
@@ -2211,17 +2202,10 @@ async fn compare_projects(
 ) -> Result<()> {
     let _project_names: Vec<&str> = projects.split(',').map(|s| s.trim()).collect();
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m        \x1b[1;37mProject Comparison\x1b[0m                \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Projects: \x1b[33m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        truncate_string(&projects, 27)
-    );
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[33m⚠  Comparison feature in development\x1b[0m    \x1b[36m│\x1b[0m"
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_section_header("Project Comparison");
+    CliFormatter::print_field("Projects", &truncate_string(&projects, 60), Some("yellow"));
+    println!();
+    CliFormatter::print_warning("Comparison feature in development");
     Ok(())
 }
 
@@ -2995,34 +2979,36 @@ async fn init_project_with_db(
 async fn show_pool_stats() -> Result<()> {
     match get_pool_stats() {
         Ok(stats) => {
-            println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-            println!("\x1b[36m│\x1b[0m        \x1b[1;37mDatabase Pool Statistics\x1b[0m          \x1b[36m│\x1b[0m");
-            println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-            println!(
-                "\x1b[36m│\x1b[0m Total Created:    \x1b[32m{:<19}\x1b[0m \x1b[36m│\x1b[0m",
-                stats.total_connections_created
+            CliFormatter::print_section_header("Database Pool Statistics");
+            CliFormatter::print_field(
+                "Total Created",
+                &stats.total_connections_created.to_string(),
+                Some("green"),
             );
-            println!(
-                "\x1b[36m│\x1b[0m Active:           \x1b[33m{:<19}\x1b[0m \x1b[36m│\x1b[0m",
-                stats.active_connections
+            CliFormatter::print_field(
+                "Active",
+                &stats.active_connections.to_string(),
+                Some("yellow"),
             );
-            println!(
-                "\x1b[36m│\x1b[0m Available in Pool:\x1b[37m{:<19}\x1b[0m \x1b[36m│\x1b[0m",
-                stats.connections_in_pool
+            CliFormatter::print_field(
+                "Available",
+                &stats.connections_in_pool.to_string(),
+                Some("white"),
             );
-            println!(
-                "\x1b[36m│\x1b[0m Total Requests:   \x1b[37m{:<19}\x1b[0m \x1b[36m│\x1b[0m",
-                stats.connection_requests
+            CliFormatter::print_field(
+                "Total Requests",
+                &stats.connection_requests.to_string(),
+                Some("white"),
             );
-            println!(
-                "\x1b[36m│\x1b[0m Timeouts:         \x1b[31m{:<19}\x1b[0m \x1b[36m│\x1b[0m",
-                stats.connection_timeouts
+            CliFormatter::print_field(
+                "Timeouts",
+                &stats.connection_timeouts.to_string(),
+                Some("red"),
             );
-            println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
         }
         Err(_) => {
-            println!("\x1b[33m⚠  Database pool not initialized or not available\x1b[0m");
-            println!("   Using direct database connections as fallback");
+            CliFormatter::print_warning("Database pool not initialized or not available");
+            CliFormatter::print_info("Using direct database connections as fallback");
         }
     }
     Ok(())
