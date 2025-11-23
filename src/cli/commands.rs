@@ -1191,19 +1191,11 @@ async fn edit_session(
         None,
     )?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m         \x1b[1;37mSession Updated\x1b[0m                 \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Session:  \x1b[1;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        id
-    );
+    CliFormatter::print_section_header("Session Updated");
+    CliFormatter::print_field("Session", &id.to_string(), Some("white"));
 
     if start.is_some() {
-        println!(
-            "\x1b[36m│\x1b[0m Start:    \x1b[32m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(&new_start.format("%Y-%m-%d %H:%M:%S").to_string(), 27)
-        );
+        CliFormatter::print_field("Start", &new_start.format("%Y-%m-%d %H:%M:%S").to_string(), Some("green"));
     }
 
     if end.is_some() {
@@ -1212,24 +1204,14 @@ async fn edit_session(
         } else {
             "Ongoing".to_string()
         };
-        println!(
-            "\x1b[36m│\x1b[0m End:      \x1b[32m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(&end_str, 27)
-        );
+        CliFormatter::print_field("End", &end_str, Some("green"));
     }
 
     if let Some(r) = &reason {
-        println!(
-            "\x1b[36m│\x1b[0m Reason:   \x1b[2;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(r, 27)
-        );
+        CliFormatter::print_field("Reason", r, Some("gray"));
     }
 
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[32m✓ Session updated with audit trail\x1b[0m     \x1b[36m│\x1b[0m"
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_success("Session updated with audit trail");
 
     Ok(())
 }
@@ -1259,28 +1241,17 @@ async fn delete_session(id: i64, force: bool) -> Result<()> {
     // Delete the session
     SessionQueries::delete_session(&db.connection, id)?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m         \x1b[1;37mSession Deleted\x1b[0m                 \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Session:  \x1b[1;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        id
-    );
-    println!(
-        "\x1b[36m│\x1b[0m Status:   \x1b[32mDeleted\x1b[0m                   \x1b[36m│\x1b[0m"
-    );
+    CliFormatter::print_section_header("Session Deleted");
+    CliFormatter::print_field("Session", &id.to_string(), Some("white"));
+    CliFormatter::print_field("Status", "Deleted", Some("green"));
 
     if session.end_time.is_none() {
-        println!("\x1b[36m│\x1b[0m Type:     \x1b[33mActive session (forced)\x1b[0m      \x1b[36m│\x1b[0m");
+        CliFormatter::print_field("Type", "Active session (forced)", Some("yellow"));
     } else {
-        println!("\x1b[36m│\x1b[0m Type:     \x1b[37mCompleted session\x1b[0m           \x1b[36m│\x1b[0m");
+        CliFormatter::print_field("Type", "Completed session", None);
     }
 
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[32m✓ Session and audit trail removed\x1b[0m      \x1b[36m│\x1b[0m"
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_success("Session and audit trail removed");
 
     Ok(())
 }
