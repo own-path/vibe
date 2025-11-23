@@ -1280,24 +1280,12 @@ async fn archive_project(project_name: String) -> Result<()> {
     let success = ProjectQueries::archive_project(&db.connection, project.id.unwrap())?;
 
     if success {
-        println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-        println!("\x1b[36m│\x1b[0m        \x1b[1;37mProject Archived\x1b[0m                \x1b[36m│\x1b[0m");
-        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-        println!(
-            "\x1b[36m│\x1b[0m Name:     \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(&project_name, 27)
-        );
-        println!(
-            "\x1b[36m│\x1b[0m Status:   \x1b[90mArchived\x1b[0m                  \x1b[36m│\x1b[0m"
-        );
-        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-        println!("\x1b[36m│\x1b[0m \x1b[32m✓ Project archived successfully\x1b[0m        \x1b[36m│\x1b[0m");
-        println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+        CliFormatter::print_section_header("Project Archived");
+        CliFormatter::print_field_bold("Name", &project_name, Some("yellow"));
+        CliFormatter::print_field("Status", "Archived", Some("gray"));
+        CliFormatter::print_success("Project archived successfully");
     } else {
-        println!(
-            "\x1b[31m✗ Failed to archive project '{}'\x1b[0m",
-            project_name
-        );
+        CliFormatter::print_error(&format!("Failed to archive project '{}'", project_name));
     }
 
     Ok(())
@@ -1326,24 +1314,12 @@ async fn unarchive_project(project_name: String) -> Result<()> {
     let success = ProjectQueries::unarchive_project(&db.connection, project.id.unwrap())?;
 
     if success {
-        println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-        println!("\x1b[36m│\x1b[0m       \x1b[1;37mProject Unarchived\x1b[0m               \x1b[36m│\x1b[0m");
-        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-        println!(
-            "\x1b[36m│\x1b[0m Name:     \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(&project_name, 27)
-        );
-        println!(
-            "\x1b[36m│\x1b[0m Status:   \x1b[32mActive\x1b[0m                    \x1b[36m│\x1b[0m"
-        );
-        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-        println!("\x1b[36m│\x1b[0m \x1b[32m✓ Project unarchived successfully\x1b[0m      \x1b[36m│\x1b[0m");
-        println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+        CliFormatter::print_section_header("Project Unarchived");
+        CliFormatter::print_field_bold("Name", &project_name, Some("yellow"));
+        CliFormatter::print_field("Status", "Active", Some("green"));
+        CliFormatter::print_success("Project unarchived successfully");
     } else {
-        println!(
-            "\x1b[31m✗ Failed to unarchive project '{}'\x1b[0m",
-            project_name
-        );
+        CliFormatter::print_error(&format!("Failed to unarchive project '{}'", project_name));
     }
 
     Ok(())
@@ -1366,29 +1342,13 @@ async fn update_project_path(project_name: String, new_path: PathBuf) -> Result<
         ProjectQueries::update_project_path(&db.connection, project.id.unwrap(), &canonical_path)?;
 
     if success {
-        println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-        println!("\x1b[36m│\x1b[0m       \x1b[1;37mProject Path Updated\x1b[0m              \x1b[36m│\x1b[0m");
-        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-        println!(
-            "\x1b[36m│\x1b[0m Name:     \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(&project_name, 27)
-        );
-        println!(
-            "\x1b[36m│\x1b[0m Old Path: \x1b[2;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(&project.path.to_string_lossy(), 27)
-        );
-        println!(
-            "\x1b[36m│\x1b[0m New Path: \x1b[32m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(&canonical_path.to_string_lossy(), 27)
-        );
-        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-        println!("\x1b[36m│\x1b[0m \x1b[32m✓ Path updated successfully\x1b[0m            \x1b[36m│\x1b[0m");
-        println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+        CliFormatter::print_section_header("Project Path Updated");
+        CliFormatter::print_field_bold("Name", &project_name, Some("yellow"));
+        CliFormatter::print_field("Old Path", &project.path.to_string_lossy(), Some("gray"));
+        CliFormatter::print_field("New Path", &canonical_path.to_string_lossy(), Some("green"));
+        CliFormatter::print_success("Path updated successfully");
     } else {
-        println!(
-            "\x1b[31m✗ Failed to update path for project '{}'\x1b[0m",
-            project_name
-        );
+        CliFormatter::print_error(&format!("Failed to update path for project '{}'", project_name));
     }
 
     Ok(())
@@ -1432,25 +1392,10 @@ async fn bulk_update_sessions_project(
     let updated =
         SessionQueries::bulk_update_project(&db.connection, &session_ids, project.id.unwrap())?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m      \x1b[1;37mBulk Session Update\x1b[0m               \x1b[36m│\x1b[0m"
-    );
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Sessions: \x1b[1;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        updated
-    );
-    println!(
-        "\x1b[36m│\x1b[0m Project:  \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        truncate_string(&new_project_name, 27)
-    );
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[32m✓ {} sessions updated\x1b[0m {:<12} \x1b[36m│\x1b[0m",
-        updated, ""
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_section_header("Bulk Session Update");
+    CliFormatter::print_field("Sessions", &updated.to_string(), Some("white"));
+    CliFormatter::print_field("Project", &new_project_name, Some("yellow"));
+    CliFormatter::print_success(&format!("{} sessions updated", updated));
 
     Ok(())
 }
@@ -1462,25 +1407,10 @@ async fn bulk_delete_sessions(session_ids: Vec<i64>) -> Result<()> {
 
     let deleted = SessionQueries::bulk_delete(&db.connection, &session_ids)?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m      \x1b[1;37mBulk Session Delete\x1b[0m               \x1b[36m│\x1b[0m"
-    );
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Requested: \x1b[1;37m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-        session_ids.len()
-    );
-    println!(
-        "\x1b[36m│\x1b[0m Deleted:   \x1b[32m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-        deleted
-    );
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[32m✓ {} sessions deleted\x1b[0m {:<10} \x1b[36m│\x1b[0m",
-        deleted, ""
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_section_header("Bulk Session Delete");
+    CliFormatter::print_field("Requested", &session_ids.len().to_string(), Some("white"));
+    CliFormatter::print_field("Deleted", &deleted.to_string(), Some("green"));
+    CliFormatter::print_success(&format!("{} sessions deleted", deleted));
 
     Ok(())
 }
@@ -1734,26 +1664,10 @@ async fn merge_sessions(
     let merged_id =
         SessionQueries::merge_sessions(&db.connection, &session_ids, target_project_id, notes)?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m        \x1b[1;37mSession Merge Complete\x1b[0m            \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Merged sessions: \x1b[33m{:<22}\x1b[0m \x1b[36m│\x1b[0m",
-        session_ids
-            .iter()
-            .map(|id| id.to_string())
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-    println!(
-        "\x1b[36m│\x1b[0m New session ID:  \x1b[32m{:<22}\x1b[0m \x1b[36m│\x1b[0m",
-        merged_id
-    );
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[32m✓ Sessions successfully merged\x1b[0m        \x1b[36m│\x1b[0m"
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_section_header("Session Merge Complete");
+    CliFormatter::print_field("Merged sessions", &session_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", "), Some("yellow"));
+    CliFormatter::print_field("New session ID", &merged_id.to_string(), Some("green"));
+    CliFormatter::print_success("Sessions successfully merged");
 
     Ok(())
 }
@@ -1811,30 +1725,11 @@ async fn split_session(
     let new_session_ids =
         SessionQueries::split_session(&db.connection, session_id, &split_times, notes_list)?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m        \x1b[1;37mSession Split Complete\x1b[0m            \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Original session: \x1b[33m{:<20}\x1b[0m \x1b[36m│\x1b[0m",
-        session_id
-    );
-    println!(
-        "\x1b[36m│\x1b[0m Split points:     \x1b[90m{:<20}\x1b[0m \x1b[36m│\x1b[0m",
-        split_times.len()
-    );
-    println!(
-        "\x1b[36m│\x1b[0m New sessions:     \x1b[32m{:<20}\x1b[0m \x1b[36m│\x1b[0m",
-        new_session_ids
-            .iter()
-            .map(|id| id.to_string())
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[32m✓ Session successfully split\x1b[0m          \x1b[36m│\x1b[0m"
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_section_header("Session Split Complete");
+    CliFormatter::print_field("Original session", &session_id.to_string(), Some("yellow"));
+    CliFormatter::print_field("Split points", &split_times.len().to_string(), Some("gray"));
+    CliFormatter::print_field("New sessions", &new_session_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", "), Some("green"));
+    CliFormatter::print_success("Session successfully split");
 
     Ok(())
 }
@@ -1986,22 +1881,16 @@ async fn list_goals(project: Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m                \x1b[1;37mGoals\x1b[0m                      \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    CliFormatter::print_section_header("Goals");
 
     for goal in &goals {
         let progress_pct = goal.progress_percentage();
-        println!(
-            "\x1b[36m│\x1b[0m 🎯 \x1b[1;33m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(&goal.name, 25)
-        );
-        println!("\x1b[36m│\x1b[0m    Progress: \x1b[32m{:.1}%\x1b[0m ({:.1}h / {:.1}h)     \x1b[36m│\x1b[0m", 
-            progress_pct, goal.current_progress, goal.target_hours);
-        println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
+        println!("  🎯 {}", ansi_color("yellow", &goal.name, true));
+        println!("      Progress: {}% ({:.1}h / {:.1}h)", 
+            ansi_color("green", &format!("{:.1}", progress_pct), false),
+            goal.current_progress, goal.target_hours);
+        println!();
     }
-
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
     Ok(())
 }
 
