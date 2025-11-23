@@ -1832,26 +1832,11 @@ async fn create_goal(
     goal.validate()?;
     let goal_id = GoalQueries::create(&db.connection, &goal)?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m           \x1b[1;37mGoal Created\x1b[0m                   \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Name:     \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        truncate_string(&name, 27)
-    );
-    println!(
-        "\x1b[36m│\x1b[0m Target:   \x1b[32m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        format!("{} hours", target_hours)
-    );
-    println!(
-        "\x1b[36m│\x1b[0m ID:       \x1b[90m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        goal_id
-    );
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[32m✓ Goal created successfully\x1b[0m             \x1b[36m│\x1b[0m"
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_section_header("Goal Created");
+    CliFormatter::print_field_bold("Name", &name, Some("yellow"));
+    CliFormatter::print_field("Target", &format!("{} hours", target_hours), Some("green"));
+    CliFormatter::print_field("ID", &goal_id.to_string(), Some("gray"));
+    CliFormatter::print_success("Goal created successfully");
 
     Ok(())
 }
@@ -1999,22 +1984,10 @@ async fn create_estimate(
 
     let estimate_id = TimeEstimateQueries::create(&db.connection, &estimate)?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m      \x1b[1;37mTime Estimate Created\x1b[0m              \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Task:      \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        truncate_string(&task, 27)
-    );
-    println!(
-        "\x1b[36m│\x1b[0m Estimate:  \x1b[32m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        format!("{} hours", hours)
-    );
-    println!(
-        "\x1b[36m│\x1b[0m ID:        \x1b[90m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        estimate_id
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_section_header("Time Estimate Created");
+    CliFormatter::print_field_bold("Task", &task, Some("yellow"));
+    CliFormatter::print_field("Estimate", &format!("{} hours", hours), Some("green"));
+    CliFormatter::print_field("ID", &estimate_id.to_string(), Some("gray"));
     Ok(())
 }
 
@@ -2039,38 +2012,29 @@ async fn list_estimates(project: String) -> Result<()> {
 
     let estimates = TimeEstimateQueries::list_by_project(&db.connection, project_obj.id.unwrap())?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m          \x1b[1;37mTime Estimates\x1b[0m                  \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    CliFormatter::print_section_header("Time Estimates");
 
     for est in &estimates {
         let variance = est.variance();
         let variance_str = if let Some(v) = variance {
             if v > 0.0 {
-                format!("\x1b[31m+{:.1}h over\x1b[0m", v)
+                ansi_color("red", &format!("+{:.1}h over", v), false)
             } else {
-                format!("\x1b[32m{:.1}h under\x1b[0m", v.abs())
+                ansi_color("green", &format!("{:.1}h under", v.abs()), false)
             }
         } else {
             "N/A".to_string()
         };
 
-        println!(
-            "\x1b[36m│\x1b[0m 📋 \x1b[1;33m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(&est.task_name, 25)
-        );
+        println!("  📋 {}", ansi_color("yellow", &est.task_name, true));
         let actual_str = est
             .actual_hours
             .map(|h| format!("{:.1}h", h))
             .unwrap_or_else(|| "N/A".to_string());
-        println!(
-            "\x1b[36m│\x1b[0m    Est: {}h | Actual: {} | {}  \x1b[36m│\x1b[0m",
-            est.estimated_hours, actual_str, variance_str
-        );
-        println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
+        println!("      Est: {}h | Actual: {} | {}", 
+            est.estimated_hours, actual_str, variance_str);
+        println!();
     }
-
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
     Ok(())
 }
 
@@ -2090,44 +2054,23 @@ async fn list_branches(project: String) -> Result<()> {
 
     let branches = GitBranchQueries::list_by_project(&db.connection, project_obj.id.unwrap())?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m          \x1b[1;37mGit Branches\x1b[0m                   \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    CliFormatter::print_section_header("Git Branches");
 
     for branch in &branches {
-        println!(
-            "\x1b[36m│\x1b[0m 🌿 \x1b[1;33m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(&branch.branch_name, 25)
-        );
-        println!(
-            "\x1b[36m│\x1b[0m    Time: \x1b[32m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-            format!("{:.1}h", branch.total_hours())
-        );
-        println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
+        println!("  🌿 {}", ansi_color("yellow", &branch.branch_name, true));
+        println!("      Time: {}", ansi_color("green", &format!("{:.1}h", branch.total_hours()), false));
+        println!();
     }
-
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
     Ok(())
 }
 
 async fn show_branch_stats(project: String, branch: Option<String>) -> Result<()> {
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m        \x1b[1;37mBranch Statistics\x1b[0m                \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Project:  \x1b[33m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        truncate_string(&project, 27)
-    );
+    CliFormatter::print_section_header("Branch Statistics");
+    CliFormatter::print_field("Project", &project, Some("yellow"));
     if let Some(b) = branch {
-        println!(
-            "\x1b[36m│\x1b[0m Branch:   \x1b[33m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(&b, 27)
-        );
+        CliFormatter::print_field("Branch", &b, Some("yellow"));
     }
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[33m⚠  Branch stats in development\x1b[0m         \x1b[36m│\x1b[0m"
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_warning("Branch stats in development");
     Ok(())
 }
 
