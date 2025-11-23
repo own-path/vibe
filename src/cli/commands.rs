@@ -3,7 +3,7 @@ use super::{
     GoalAction, IssueAction, ProjectAction, SessionAction, TagAction, TemplateAction,
     WorkspaceAction,
 };
-use crate::cli::formatter::{format_duration_clean, truncate_string, CliFormatter};
+use crate::cli::formatter::{format_duration_clean, truncate_string, CliFormatter, StringFormat, ansi_color};
 use crate::cli::reports::ReportGenerator;
 use crate::db::advanced_queries::{
     GitBranchQueries, GoalQueries, InsightQueries, TemplateQueries, TimeEstimateQueries,
@@ -805,34 +805,16 @@ async fn create_tag(
     // Save to database
     let tag_id = TagQueries::create(&db.connection, &tag)?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m           \x1b[1;37mTag Created\x1b[0m                   \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Name:     \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        truncate_string(&tag.name, 27)
-    );
+    CliFormatter::print_section_header("Tag Created");
+    CliFormatter::print_field_bold("Name", &tag.name, Some("yellow"));
     if let Some(color_val) = &tag.color {
-        println!(
-            "\x1b[36m│\x1b[0m Color:    \x1b[37m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(color_val, 27)
-        );
+        CliFormatter::print_field("Color", color_val, None);
     }
     if let Some(desc) = &tag.description {
-        println!(
-            "\x1b[36m│\x1b[0m Desc:     \x1b[2;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(desc, 27)
-        );
+        CliFormatter::print_field("Description", desc, Some("gray"));
     }
-    println!(
-        "\x1b[36m│\x1b[0m ID:       \x1b[90m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        tag_id
-    );
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[32m✓ Tag created successfully\x1b[0m             \x1b[36m│\x1b[0m"
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_field("ID", &tag_id.to_string(), Some("gray"));
+    CliFormatter::print_success("Tag created successfully");
 
     Ok(())
 }
@@ -857,9 +839,7 @@ async fn list_tags() -> Result<()> {
         return Ok(());
     }
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m                \x1b[1;37mTags\x1b[0m                      \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    CliFormatter::print_section_header("Tags");
 
     for tag in &tags {
         let color_indicator = if let Some(color) = &tag.color {
@@ -868,27 +848,16 @@ async fn list_tags() -> Result<()> {
             String::new()
         };
 
-        println!(
-            "\x1b[36m│\x1b[0m 🏷️  \x1b[1;33m{:<30}\x1b[0m \x1b[36m│\x1b[0m",
-            format!("{}{}", truncate_string(&tag.name, 25), color_indicator)
-        );
+        let tag_name = format!("🏷️  {}{}", tag.name, color_indicator);
+        println!("  {}", ansi_color("yellow", &tag_name, true));
 
         if let Some(description) = &tag.description {
-            println!(
-                "\x1b[36m│\x1b[0m     \x1b[2;37m{:<33}\x1b[0m \x1b[36m│\x1b[0m",
-                truncate_string(description, 33)
-            );
+            println!("     {}", description.dimmed());
         }
-
-        println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
+        println!();
     }
 
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m \x1b[1;37mTotal:\x1b[0m {:<30} \x1b[36m│\x1b[0m",
-        format!("{} tags", tags.len())
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    println!("  {}: {}", "Total".dimmed(), format!("{} tags", tags.len()));
 
     Ok(())
 }

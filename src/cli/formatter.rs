@@ -111,7 +111,7 @@ impl CliFormatter {
 }
 
 // Helper functions
-fn ansi_color(color: &str, text: &str, bold: bool) -> String {
+pub fn ansi_color(color: &str, text: &str, bold: bool) -> String {
     let color_code = match color {
         "red" => "31",
         "green" => "32",
@@ -135,7 +135,7 @@ fn bold(text: &str) -> String {
     format!("\x1b[1m{}\x1b[0m", text)
 }
 
-trait StringFormat {
+pub trait StringFormat {
     fn dimmed(&self) -> String;
 }
 
