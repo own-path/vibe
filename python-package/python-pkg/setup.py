@@ -61,7 +61,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="tempo-tracker-cli",
-    version="0.3.2",
+    version="0.3.3",
     author="Own Path",
     author_email="brandy.daryl@gmail.com",
     description="The Most Advanced Automatic Project Time Tracker - Lightning-fast Rust-powered CLI",
