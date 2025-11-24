@@ -828,14 +828,10 @@ async fn list_tags() -> Result<()> {
     let tags = TagQueries::list_all(&db.connection)?;
 
     if tags.is_empty() {
-        println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-        println!("\x1b[36m│\x1b[0m               \x1b[1;37mNo Tags\x1b[0m                    \x1b[36m│\x1b[0m");
-        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-        println!("\x1b[36m│\x1b[0m No tags found.                          \x1b[36m│\x1b[0m");
-        println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
-        println!("\x1b[36m│\x1b[0m \x1b[37mCreate a tag:\x1b[0m                          \x1b[36m│\x1b[0m");
-        println!("\x1b[36m│\x1b[0m   \x1b[96mtempo tag create <name>\x1b[0m             \x1b[36m│\x1b[0m");
-        println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+        CliFormatter::print_section_header("No Tags");
+        CliFormatter::print_empty_state("No tags found.");
+        println!();
+        CliFormatter::print_info("Create a tag: tempo tag create <name>");
         return Ok(());
     }
 
@@ -877,21 +873,12 @@ async fn delete_tag(name: String) -> Result<()> {
     let deleted = TagQueries::delete_by_name(&db.connection, &name)?;
 
     if deleted {
-        println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-        println!("\x1b[36m│\x1b[0m           \x1b[1;37mTag Deleted\x1b[0m                   \x1b[36m│\x1b[0m");
-        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-        println!(
-            "\x1b[36m│\x1b[0m Name:     \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(&name, 27)
-        );
-        println!(
-            "\x1b[36m│\x1b[0m Status:   \x1b[32mDeleted\x1b[0m                   \x1b[36m│\x1b[0m"
-        );
-        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-        println!("\x1b[36m│\x1b[0m \x1b[32m✓ Tag deleted successfully\x1b[0m             \x1b[36m│\x1b[0m");
-        println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+        CliFormatter::print_section_header("Tag Deleted");
+        CliFormatter::print_field_bold("Name", &name, Some("yellow"));
+        CliFormatter::print_status("Deleted", true);
+        CliFormatter::print_success("Tag deleted successfully");
     } else {
-        println!("\x1b[31m✗ Failed to delete tag '{}'\x1b[0m", name);
+        CliFormatter::print_error(&format!("Failed to delete tag '{}'", name));
     }
 
     Ok(())
@@ -935,18 +922,11 @@ async fn get_config(key: String) -> Result<()> {
 
     match value {
         Some(val) => {
-            println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-            println!("\x1b[36m│\x1b[0m          \x1b[1;37mConfiguration Value\x1b[0m             \x1b[36m│\x1b[0m");
-            println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-            println!(
-                "\x1b[36m│\x1b[0m {:<20} \x1b[33m{:<16}\x1b[0m \x1b[36m│\x1b[0m",
-                truncate_string(&key, 20),
-                truncate_string(&val, 16)
-            );
-            println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+            CliFormatter::print_section_header("Configuration Value");
+            CliFormatter::print_field(&key, &val, Some("yellow"));
         }
         None => {
-            println!("\x1b[31m✗ Configuration key not found:\x1b[0m {}", key);
+            CliFormatter::print_error(&format!("Configuration key not found: {}", key));
         }
     }
 
@@ -1033,14 +1013,10 @@ async fn list_sessions(limit: Option<usize>, project_filter: Option<String>) -> 
     )?;
 
     if sessions.is_empty() {
-        println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-        println!("\x1b[36m│\x1b[0m             \x1b[1;37mNo Sessions\x1b[0m                  \x1b[36m│\x1b[0m");
-        println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-        println!("\x1b[36m│\x1b[0m No sessions found.                      \x1b[36m│\x1b[0m");
-        println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
-        println!("\x1b[36m│\x1b[0m \x1b[37mStart a session:\x1b[0m                      \x1b[36m│\x1b[0m");
-        println!("\x1b[36m│\x1b[0m   \x1b[96mtempo session start\x1b[0m                 \x1b[36m│\x1b[0m");
-        println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+        CliFormatter::print_section_header("No Sessions");
+        CliFormatter::print_empty_state("No sessions found.");
+        println!();
+        CliFormatter::print_info("Start a session: tempo session start");
         return Ok(());
     }
 
@@ -1860,9 +1836,8 @@ async fn list_goals(project: Option<String>) -> Result<()> {
     let goals = GoalQueries::list_by_project(&db.connection, project_id)?;
 
     if goals.is_empty() {
-        println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-        println!("\x1b[36m│\x1b[0m              \x1b[1;37mNo Goals\x1b[0m                    \x1b[36m│\x1b[0m");
-        println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+        CliFormatter::print_section_header("No Goals");
+        CliFormatter::print_empty_state("No goals found.");
         return Ok(());
     }
 
@@ -2118,20 +2093,11 @@ async fn create_template(
 
     let _template_id = TemplateQueries::create(&db.connection, &template)?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m         \x1b[1;37mTemplate Created\x1b[0m                  \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Name:     \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        truncate_string(&name, 27)
-    );
+    CliFormatter::print_section_header("Template Created");
+    CliFormatter::print_field_bold("Name", &name, Some("yellow"));
     if let Some(desc) = &desc_clone {
-        println!(
-            "\x1b[36m│\x1b[0m Desc:     \x1b[2;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(desc, 27)
-        );
+        CliFormatter::print_field("Description", desc, Some("gray"));
     }
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
     Ok(())
 }
 
@@ -2141,29 +2107,22 @@ async fn list_templates() -> Result<()> {
 
     let templates = TemplateQueries::list_all(&db.connection)?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m          \x1b[1;37mTemplates\x1b[0m                      \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    CliFormatter::print_section_header("Templates");
 
     if templates.is_empty() {
-        println!("\x1b[36m│\x1b[0m No templates found.                      \x1b[36m│\x1b[0m");
+        CliFormatter::print_empty_state("No templates found.");
     } else {
         for template in &templates {
             println!(
-                "\x1b[36m│\x1b[0m 📋 \x1b[1;33m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-                truncate_string(&template.name, 25)
+                "  📋 {}",
+                ansi_color("yellow", &truncate_string(&template.name, 25), true)
             );
             if let Some(desc) = &template.description {
-                println!(
-                    "\x1b[36m│\x1b[0m    \x1b[2;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-                    truncate_string(desc, 27)
-                );
+                println!("      {}", truncate_string(desc, 27).dimmed());
             }
-            println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
+            println!();
         }
     }
-
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
     Ok(())
 }
 
@@ -2218,18 +2177,9 @@ async fn use_template(template: String, project_name: String, path: Option<PathB
         GoalQueries::create(&db.connection, &goal)?;
     }
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m    \x1b[1;37mProject Created from Template\x1b[0m          \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Template: \x1b[33m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        truncate_string(&selected_template.name, 27)
-    );
-    println!(
-        "\x1b[36m│\x1b[0m Project:   \x1b[33m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        truncate_string(&project_name, 27)
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_section_header("Project Created from Template");
+    CliFormatter::print_field_bold("Template", &selected_template.name, Some("yellow"));
+    CliFormatter::print_field_bold("Project", &project_name, Some("yellow"));
     Ok(())
 }
 
@@ -2272,20 +2222,11 @@ async fn create_workspace(
 
     let _workspace_id = WorkspaceQueries::create(&db.connection, &workspace)?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m        \x1b[1;37mWorkspace Created\x1b[0m                  \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Name:     \x1b[1;33m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-        truncate_string(&name, 27)
-    );
+    CliFormatter::print_section_header("Workspace Created");
+    CliFormatter::print_field_bold("Name", &name, Some("yellow"));
     if let Some(desc) = &desc_clone {
-        println!(
-            "\x1b[36m│\x1b[0m Desc:     \x1b[2;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(desc, 27)
-        );
+        CliFormatter::print_field("Description", desc, Some("gray"));
     }
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
     Ok(())
 }
 
@@ -2295,29 +2236,22 @@ async fn list_workspaces() -> Result<()> {
 
     let workspaces = WorkspaceQueries::list_all(&db.connection)?;
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m          \x1b[1;37mWorkspaces\x1b[0m                      \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    CliFormatter::print_section_header("Workspaces");
 
     if workspaces.is_empty() {
-        println!("\x1b[36m│\x1b[0m No workspaces found.                     \x1b[36m│\x1b[0m");
+        CliFormatter::print_empty_state("No workspaces found.");
     } else {
         for workspace in &workspaces {
             println!(
-                "\x1b[36m│\x1b[0m 📁 \x1b[1;33m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-                truncate_string(&workspace.name, 25)
+                "  📁 {}",
+                ansi_color("yellow", &truncate_string(&workspace.name, 25), true)
             );
             if let Some(desc) = &workspace.description {
-                println!(
-                    "\x1b[36m│\x1b[0m    \x1b[2;37m{:<27}\x1b[0m \x1b[36m│\x1b[0m",
-                    truncate_string(desc, 27)
-                );
+                println!("      {}", truncate_string(desc, 27).dimmed());
             }
-            println!("\x1b[36m│\x1b[0m                                         \x1b[36m│\x1b[0m");
+            println!();
         }
     }
-
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
     Ok(())
 }
 
@@ -2449,21 +2383,14 @@ async fn delete_workspace(workspace: String) -> Result<()> {
     // Check if workspace has projects
     let projects = WorkspaceQueries::list_projects(&db.connection, workspace_id)?;
     if !projects.is_empty() {
-        println!("\x1b[33m⚠\x1b[0m Cannot delete workspace '\x1b[33m{}\x1b[0m' - it contains {} project(s). Remove projects first.", 
-                workspace, projects.len());
+        CliFormatter::print_warning(&format!("Cannot delete workspace '{}' - it contains {} project(s). Remove projects first.", workspace, projects.len()));
         return Ok(());
     }
 
     if WorkspaceQueries::delete(&db.connection, workspace_id)? {
-        println!(
-            "\x1b[32m✓\x1b[0m Deleted workspace '\x1b[33m{}\x1b[0m'",
-            workspace
-        );
+        CliFormatter::print_success(&format!("Deleted workspace '{}'", workspace));
     } else {
-        println!(
-            "\x1b[31m✗\x1b[0m Failed to delete workspace '\x1b[33m{}\x1b[0m'",
-            workspace
-        );
+        CliFormatter::print_error(&format!("Failed to delete workspace '{}'", workspace));
     }
 
     Ok(())
@@ -2635,43 +2562,22 @@ async fn init_project_with_db(
         )?;
     }
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m         \x1b[1;37mProject Initialized\x1b[0m               \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Name:        \x1b[33m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-        truncate_string(&project_name, 25)
-    );
-    println!(
-        "\x1b[36m│\x1b[0m Path:        \x1b[37m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-        truncate_string(&canonical_path.display().to_string(), 25)
-    );
+    CliFormatter::print_section_header("Project Initialized");
+    CliFormatter::print_field_bold("Name", &project_name, Some("yellow"));
+    CliFormatter::print_field("Path", &canonical_path.display().to_string(), Some("gray"));
 
     if let Some(desc) = &description {
-        println!(
-            "\x1b[36m│\x1b[0m Description: \x1b[37m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-            truncate_string(desc, 25)
-        );
+        CliFormatter::print_field("Description", desc, Some("gray"));
     }
 
     if is_git_repository(&canonical_path) {
-        println!(
-            "\x1b[36m│\x1b[0m Git:         \x1b[32m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-            "Repository detected"
-        );
+        CliFormatter::print_field("Git", "Repository detected", Some("green"));
         if let Some(hash) = &git_hash {
-            println!(
-                "\x1b[36m│\x1b[0m Git Hash:    \x1b[37m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-                truncate_string(hash, 25)
-            );
+            CliFormatter::print_field("Git Hash", &truncate_string(hash, 25), Some("gray"));
         }
     }
 
-    println!(
-        "\x1b[36m│\x1b[0m ID:          \x1b[37m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-        project_id
-    );
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
+    CliFormatter::print_field("ID", &project_id.to_string(), Some("gray"));
 
     Ok(())
 }
