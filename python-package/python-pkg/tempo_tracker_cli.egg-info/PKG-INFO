@@ -1,6 +1,6 @@
-Metadata-Version: 2.4
+Metadata-Version: 2.2
 Name: tempo-tracker-cli
-Version: 0.3.3
+Version: 0.3.4
 Summary: The Most Advanced Automatic Project Time Tracker - Lightning-fast Rust-powered CLI
 Home-page: https://github.com/own-path/vibe
 Author: Own Path
@@ -56,7 +56,6 @@ Description-Content-Type: text/markdown
 License-File: LICENSE
 Dynamic: author
 Dynamic: home-page
-Dynamic: license-file
 Dynamic: requires-python
 
 # Tempo

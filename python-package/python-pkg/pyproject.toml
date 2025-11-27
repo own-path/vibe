@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tempo-tracker-cli"
-version = "0.3.3"
+version = "0.3.4"
 authors = [
     {name = "Own Path", email = "brandy.daryl@gmail.com"},
 ]
