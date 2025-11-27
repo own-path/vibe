@@ -112,6 +112,32 @@ pub async fn handle_command(cli: Cli) -> Result<()> {
             Cli::generate_completions(shell);
             Ok(())
         }
+
+        Commands::Cat {
+            files,
+            show_all,
+            number_nonblank,
+            show_ends,
+            show_ends_only,
+            number,
+            squeeze_blank,
+            show_tabs,
+            show_tabs_only,
+            show_nonprinting,
+            version,
+        } => handle_cat_command(
+            files,
+            show_all,
+            number_nonblank,
+            show_ends,
+            show_ends_only,
+            number,
+            squeeze_blank,
+            show_tabs,
+            show_tabs_only,
+            show_nonprinting,
+            version,
+        ).await,
     }
 }
 
@@ -2746,4 +2772,182 @@ async fn handle_update(check: bool, force: bool, verbose: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+async fn handle_cat_command(
+    files: Vec<PathBuf>,
+    show_all: bool,
+    number_nonblank: bool,
+    show_ends: bool,
+    show_ends_only: bool,
+    number: bool,
+    squeeze_blank: bool,
+    show_tabs: bool,
+    show_tabs_only: bool,
+    show_nonprinting: bool,
+    version: bool,
+) -> Result<()> {
+    if version {
+        println!("cat version {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
+    if files.is_empty() {
+        return read_stdin(
+            show_all,
+            number_nonblank,
+            show_ends || show_ends_only,
+            number,
+            squeeze_blank,
+            show_tabs || show_tabs_only,
+            show_nonprinting,
+        ).await;
+    }
+
+    for file_path in files {
+        if file_path == PathBuf::from("-") {
+            read_stdin(
+                show_all,
+                number_nonblank,
+                show_ends || show_ends_only,
+                number,
+                squeeze_blank,
+                show_tabs || show_tabs_only,
+                show_nonprinting,
+            ).await?;
+        } else {
+            read_file(
+                &file_path,
+                show_all,
+                number_nonblank,
+                show_ends || show_ends_only,
+                number,
+                squeeze_blank,
+                show_tabs || show_tabs_only,
+                show_nonprinting,
+            ).await?;
+        }
+    }
+
+    Ok(())
+}
+
+
+async fn read_stdin(
+    _show_all: bool,
+    number_nonblank: bool,
+    show_ends: bool,
+    number: bool,
+    squeeze_blank: bool,
+    show_tabs: bool,
+    show_nonprinting: bool,
+) -> Result<()> {
+    use tokio::io::{self, AsyncBufReadExt, BufReader};
+    
+    let stdin = io::stdin();
+    let reader = BufReader::new(stdin);
+    let mut lines = reader.lines();
+    let mut line_number = 1;
+    let mut last_was_empty = false;
+
+    while let Some(line) = lines.next_line().await? {
+        if squeeze_blank && line.trim().is_empty() {
+            if last_was_empty {
+                continue;
+            }
+            last_was_empty = true;
+        } else {
+            last_was_empty = false;
+        }
+
+        let processed_line = process_line(&line, show_tabs, show_nonprinting, show_ends);
+        
+        if number_nonblank && !line.trim().is_empty() {
+            println!("{:6}\t{}", line_number, processed_line);
+            line_number += 1;
+        } else if number && !number_nonblank {
+            println!("{:6}\t{}", line_number, processed_line);
+            line_number += 1;
+        } else {
+            println!("{}", processed_line);
+        }
+    }
+
+    Ok(())
+}
+
+async fn read_file(
+    file_path: &PathBuf,
+    _show_all: bool,
+    number_nonblank: bool,
+    show_ends: bool,
+    number: bool,
+    squeeze_blank: bool,
+    show_tabs: bool,
+    show_nonprinting: bool,
+) -> Result<()> {
+    use tokio::fs::File;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+
+    let file = File::open(file_path).await.context(format!("cat: {}: No such file or directory", file_path.display()))?;
+    let reader = BufReader::new(file);
+    let mut lines = reader.lines();
+    let mut line_number = 1;
+    let mut last_was_empty = false;
+
+    while let Some(line) = lines.next_line().await? {
+        if squeeze_blank && line.trim().is_empty() {
+            if last_was_empty {
+                continue;
+            }
+            last_was_empty = true;
+        } else {
+            last_was_empty = false;
+        }
+
+        let processed_line = process_line(&line, show_tabs, show_nonprinting, show_ends);
+        
+        if number_nonblank && !line.trim().is_empty() {
+            println!("{:6}\t{}", line_number, processed_line);
+            line_number += 1;
+        } else if number && !number_nonblank {
+            println!("{:6}\t{}", line_number, processed_line);
+            line_number += 1;
+        } else {
+            println!("{}", processed_line);
+        }
+    }
+
+    Ok(())
+}
+
+fn process_line(line: &str, show_tabs: bool, show_nonprinting: bool, show_ends: bool) -> String {
+    let mut result = line.to_string();
+    
+    if show_tabs {
+        result = result.replace('\t', "^I");
+    }
+    
+    if show_nonprinting {
+        result = result.chars().map(|c| {
+            match c {
+                '\t' if !show_tabs => c.to_string(),
+                '\n' => c.to_string(),
+                c if c.is_control() => {
+                    if c as u8 <= 26 {
+                        format!("^{}", (c as u8 + b'@') as char)
+                    } else {
+                        format!("^?")
+                    }
+                }
+                c => c.to_string(),
+            }
+        }).collect();
+    }
+    
+    if show_ends {
+        result.push('$');
+    }
+    
+    result
 }

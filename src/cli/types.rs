@@ -204,6 +204,42 @@ pub enum Commands {
         #[arg(help = "Shell to generate completions for")]
         shell: Shell,
     },
+
+    #[command(about = "Display file contents")]
+    Cat {
+        #[arg(help = "Files to display")]
+        files: Vec<PathBuf>,
+
+        #[arg(short = 'A', long, help = "Equivalent to -vET")]
+        show_all: bool,
+
+        #[arg(short = 'b', long, help = "Number nonblank output lines, overrides -n")]
+        number_nonblank: bool,
+
+        #[arg(short = 'e', help = "Equivalent to -vE")]
+        show_ends: bool,
+
+        #[arg(short = 'E', long, help = "Display $ at end of each line")]
+        show_ends_only: bool,
+
+        #[arg(short = 'n', long, help = "Number all output lines")]
+        number: bool,
+
+        #[arg(short = 's', long, help = "Suppress repeated empty output lines")]
+        squeeze_blank: bool,
+
+        #[arg(short = 't', help = "Equivalent to -vT")]
+        show_tabs: bool,
+
+        #[arg(short = 'T', long, help = "Display TAB characters as ^I")]
+        show_tabs_only: bool,
+
+        #[arg(short = 'v', long, help = "Use ^ and M- notation, except for LFD and TAB")]
+        show_nonprinting: bool,
+
+        #[arg(long, help = "Output version information and exit")]
+        version: bool,
+    },
 }
 
 #[derive(Subcommand)]
