@@ -3,7 +3,9 @@ use super::{
     GoalAction, IssueAction, ProjectAction, SessionAction, TagAction, TemplateAction,
     WorkspaceAction,
 };
-use crate::cli::formatter::{format_duration_clean, truncate_string, CliFormatter, StringFormat, ansi_color};
+use crate::cli::formatter::{
+    ansi_color, format_duration_clean, truncate_string, CliFormatter, StringFormat,
+};
 use crate::cli::reports::ReportGenerator;
 use crate::db::advanced_queries::{
     GitBranchQueries, GoalQueries, InsightQueries, TemplateQueries, TimeEstimateQueries,
@@ -125,19 +127,22 @@ pub async fn handle_command(cli: Cli) -> Result<()> {
             show_tabs_only,
             show_nonprinting,
             version,
-        } => handle_cat_command(
-            files,
-            show_all,
-            number_nonblank,
-            show_ends,
-            show_ends_only,
-            number,
-            squeeze_blank,
-            show_tabs,
-            show_tabs_only,
-            show_nonprinting,
-            version,
-        ).await,
+        } => {
+            handle_cat_command(
+                files,
+                show_all,
+                number_nonblank,
+                show_ends,
+                show_ends_only,
+                number,
+                squeeze_blank,
+                show_tabs,
+                show_tabs_only,
+                show_nonprinting,
+                version,
+            )
+            .await
+        }
     }
 }
 
@@ -226,7 +231,8 @@ async fn start_daemon() -> Result<()> {
         return Ok(());
     }
 
-    println!("Starting tempo daemon...");
+    let version = env!("CARGO_PKG_VERSION");
+    CliFormatter::print_daemon_start(version);
 
     let current_exe = std::env::current_exe()?;
     let daemon_exe = current_exe.with_file_name("tempo-daemon");
@@ -255,7 +261,7 @@ async fn start_daemon() -> Result<()> {
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     if is_daemon_running() {
-        println!("Daemon started successfully (PID: {})", child.id());
+        CliFormatter::print_daemon_success(child.id(), "Rust/Actix");
         Ok(())
     } else {
         Err(anyhow::anyhow!("Failed to start daemon"))
@@ -616,26 +622,28 @@ fn print_no_active_session(message: &str) {
 }
 
 fn print_daemon_status(uptime: u64, active_session: Option<&crate::utils::ipc::SessionInfo>) {
-    CliFormatter::print_section_header("Daemon Status");
-    CliFormatter::print_status("Online", true);
-    CliFormatter::print_field("Uptime", &format_duration_clean(uptime as i64), None);
-
     if let Some(session) = active_session {
-        println!();
-        CliFormatter::print_field_bold("Active Session", "", None);
-        CliFormatter::print_field("  Project", &session.project_name, Some("yellow"));
-        CliFormatter::print_field(
-            "  Duration",
-            &format_duration_clean(session.duration),
-            Some("green"),
-        );
-        CliFormatter::print_field(
-            "  Context",
-            &session.context,
-            Some(get_context_color(&session.context)),
-        );
+        // Check for git
+        let is_git = session.project_path.join(".git").exists();
+        let git_badge = if is_git {
+            // Inverted cyan background for badge look if possible, or just cyan text
+            // Using cyan text for now as per simple ansi_color
+            format!(" {}", ansi_color("cyan", "GIT", false))
+        } else {
+            "".to_string()
+        };
+
+        let context_display = format!("{}{}", session.context, git_badge);
+        CliFormatter::print_block_line("Context", &context_display);
+
+        // Language detection would go here
+
+        let duration = format_duration_clean(session.duration);
+        let session_val = format!("{} {}", duration, ansi_color("cyan", "●", false));
+        CliFormatter::print_block_line("Session", &session_val);
     } else {
-        CliFormatter::print_field("Session", "No active session", Some("yellow"));
+        CliFormatter::print_block_line("Status", "Daemon active");
+        CliFormatter::print_block_line("Uptime", &format_duration_clean(uptime as i64));
     }
 }
 
@@ -870,16 +878,16 @@ async fn list_tags() -> Result<()> {
             String::new()
         };
 
-        let tag_name = format!("🏷️  {}{}", tag.name, color_indicator);
-        println!("  {}", ansi_color("yellow", &tag_name, true));
+        let tag_name = format!("{}{}", tag.name, color_indicator);
+        CliFormatter::print_field("Tag", &tag_name, Some("yellow"));
 
         if let Some(description) = &tag.description {
-            println!("     {}", description.dimmed());
+            CliFormatter::print_field("Description", description, None);
         }
         println!();
     }
 
-    println!("  {}: {}", "Total".dimmed(), format!("{} tags", tags.len()));
+    CliFormatter::print_block_line("Total", &format!("{} tags", tags.len()));
 
     Ok(())
 }
@@ -915,11 +923,27 @@ async fn show_config() -> Result<()> {
     let config = load_config()?;
 
     CliFormatter::print_section_header("Configuration");
-    CliFormatter::print_field("idle_timeout_minutes", &config.idle_timeout_minutes.to_string(), Some("yellow"));
-    CliFormatter::print_field("auto_pause_enabled", &config.auto_pause_enabled.to_string(), Some("yellow"));
+    CliFormatter::print_field(
+        "idle_timeout_minutes",
+        &config.idle_timeout_minutes.to_string(),
+        Some("yellow"),
+    );
+    CliFormatter::print_field(
+        "auto_pause_enabled",
+        &config.auto_pause_enabled.to_string(),
+        Some("yellow"),
+    );
     CliFormatter::print_field("default_context", &config.default_context, Some("yellow"));
-    CliFormatter::print_field("max_session_hours", &config.max_session_hours.to_string(), Some("yellow"));
-    CliFormatter::print_field("backup_enabled", &config.backup_enabled.to_string(), Some("yellow"));
+    CliFormatter::print_field(
+        "max_session_hours",
+        &config.max_session_hours.to_string(),
+        Some("yellow"),
+    );
+    CliFormatter::print_field(
+        "backup_enabled",
+        &config.backup_enabled.to_string(),
+        Some("yellow"),
+    );
     CliFormatter::print_field("log_level", &config.log_level, Some("yellow"));
 
     if !config.custom_settings.is_empty() {
@@ -1057,7 +1081,11 @@ async fn list_sessions(limit: Option<usize>, project_filter: Option<String>) -> 
     CliFormatter::print_section_header("Recent Sessions");
 
     for session in &filtered_sessions {
-        let status_icon = if session.end_time.is_some() { "✅" } else { "🔄" };
+        let status_icon = if session.end_time.is_some() {
+            "✅"
+        } else {
+            "🔄"
+        };
         let duration = if let Some(end) = session.end_time {
             (end - session.start_time).num_seconds() - session.paused_duration.num_seconds()
         } else {
@@ -1071,14 +1099,38 @@ async fn list_sessions(limit: Option<usize>, project_filter: Option<String>) -> 
             crate::models::SessionContext::Manual => "blue",
         };
 
-        println!("  {} {}", status_icon, ansi_color("white", &format!("Session {}", session.id.unwrap_or(0)), true));
-        CliFormatter::print_field("    Duration", &format_duration_clean(duration), Some("green"));
-        CliFormatter::print_field("    Context", &session.context.to_string(), Some(context_color));
-        CliFormatter::print_field("    Started", &session.start_time.format("%Y-%m-%d %H:%M:%S").to_string(), None);
+        println!(
+            "  {} {}",
+            status_icon,
+            ansi_color(
+                "white",
+                &format!("Session {}", session.id.unwrap_or(0)),
+                true
+            )
+        );
+        CliFormatter::print_field(
+            "    Duration",
+            &format_duration_clean(duration),
+            Some("green"),
+        );
+        CliFormatter::print_field(
+            "    Context",
+            &session.context.to_string(),
+            Some(context_color),
+        );
+        CliFormatter::print_field(
+            "    Started",
+            &session.start_time.format("%Y-%m-%d %H:%M:%S").to_string(),
+            None,
+        );
         println!();
     }
 
-    println!("  {}: {}", "Showing".dimmed(), format!("{} recent sessions", filtered_sessions.len()));
+    println!(
+        "  {}: {}",
+        "Showing".dimmed(),
+        format!("{} recent sessions", filtered_sessions.len())
+    );
 
     Ok(())
 }
@@ -1197,7 +1249,11 @@ async fn edit_session(
     CliFormatter::print_field("Session", &id.to_string(), Some("white"));
 
     if start.is_some() {
-        CliFormatter::print_field("Start", &new_start.format("%Y-%m-%d %H:%M:%S").to_string(), Some("green"));
+        CliFormatter::print_field(
+            "Start",
+            &new_start.format("%Y-%m-%d %H:%M:%S").to_string(),
+            Some("green"),
+        );
     }
 
     if end.is_some() {
@@ -1350,7 +1406,10 @@ async fn update_project_path(project_name: String, new_path: PathBuf) -> Result<
         CliFormatter::print_field("New Path", &canonical_path.to_string_lossy(), Some("green"));
         CliFormatter::print_success("Path updated successfully");
     } else {
-        CliFormatter::print_error(&format!("Failed to update path for project '{}'", project_name));
+        CliFormatter::print_error(&format!(
+            "Failed to update path for project '{}'",
+            project_name
+        ));
     }
 
     Ok(())
@@ -1667,7 +1726,15 @@ async fn merge_sessions(
         SessionQueries::merge_sessions(&db.connection, &session_ids, target_project_id, notes)?;
 
     CliFormatter::print_section_header("Session Merge Complete");
-    CliFormatter::print_field("Merged sessions", &session_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", "), Some("yellow"));
+    CliFormatter::print_field(
+        "Merged sessions",
+        &session_ids
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join(", "),
+        Some("yellow"),
+    );
     CliFormatter::print_field("New session ID", &merged_id.to_string(), Some("green"));
     CliFormatter::print_success("Sessions successfully merged");
 
@@ -1730,7 +1797,15 @@ async fn split_session(
     CliFormatter::print_section_header("Session Split Complete");
     CliFormatter::print_field("Original session", &session_id.to_string(), Some("yellow"));
     CliFormatter::print_field("Split points", &split_times.len().to_string(), Some("gray"));
-    CliFormatter::print_field("New sessions", &new_session_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", "), Some("green"));
+    CliFormatter::print_field(
+        "New sessions",
+        &new_session_ids
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join(", "),
+        Some("green"),
+    );
     CliFormatter::print_success("Session successfully split");
 
     Ok(())
@@ -1871,10 +1946,17 @@ async fn list_goals(project: Option<String>) -> Result<()> {
 
     for goal in &goals {
         let progress_pct = goal.progress_percentage();
-        println!("  🎯 {}", ansi_color("yellow", &goal.name, true));
-        println!("      Progress: {}% ({:.1}h / {:.1}h)", 
-            ansi_color("green", &format!("{:.1}", progress_pct), false),
-            goal.current_progress, goal.target_hours);
+        CliFormatter::print_field("Goal", &goal.name, Some("yellow"));
+        CliFormatter::print_field(
+            "Progress",
+            &format!(
+                "{}% ({:.1}h / {:.1}h)",
+                ansi_color("green", &format!("{:.1}", progress_pct), false),
+                goal.current_progress,
+                goal.target_hours
+            ),
+            None,
+        );
         println!();
     }
     Ok(())
@@ -2032,8 +2114,10 @@ async fn list_estimates(project: String) -> Result<()> {
             .actual_hours
             .map(|h| format!("{:.1}h", h))
             .unwrap_or_else(|| "N/A".to_string());
-        println!("      Est: {}h | Actual: {} | {}", 
-            est.estimated_hours, actual_str, variance_str);
+        println!(
+            "      Est: {}h | Actual: {} | {}",
+            est.estimated_hours, actual_str, variance_str
+        );
         println!();
     }
     Ok(())
@@ -2059,7 +2143,10 @@ async fn list_branches(project: String) -> Result<()> {
 
     for branch in &branches {
         println!("  🌿 {}", ansi_color("yellow", &branch.branch_name, true));
-        println!("      Time: {}", ansi_color("green", &format!("{:.1}h", branch.total_hours()), false));
+        println!(
+            "      Time: {}",
+            ansi_color("green", &format!("{:.1}h", branch.total_hours()), false)
+        );
         println!();
     }
     Ok(())
@@ -2139,12 +2226,9 @@ async fn list_templates() -> Result<()> {
         CliFormatter::print_empty_state("No templates found.");
     } else {
         for template in &templates {
-            println!(
-                "  📋 {}",
-                ansi_color("yellow", &truncate_string(&template.name, 25), true)
-            );
+            CliFormatter::print_field("Template", &template.name, Some("yellow"));
             if let Some(desc) = &template.description {
-                println!("      {}", truncate_string(desc, 27).dimmed());
+                CliFormatter::print_field("Description", desc, None);
             }
             println!();
         }
@@ -2268,12 +2352,9 @@ async fn list_workspaces() -> Result<()> {
         CliFormatter::print_empty_state("No workspaces found.");
     } else {
         for workspace in &workspaces {
-            println!(
-                "  📁 {}",
-                ansi_color("yellow", &truncate_string(&workspace.name, 25), true)
-            );
+            CliFormatter::print_field("Workspace", &workspace.name, Some("yellow"));
             if let Some(desc) = &workspace.description {
-                println!("      {}", truncate_string(desc, 27).dimmed());
+                CliFormatter::print_field("Description", desc, None);
             }
             println!();
         }
@@ -2357,40 +2438,38 @@ async fn list_workspace_projects(workspace: String) -> Result<()> {
     let projects = WorkspaceQueries::list_projects(&db.connection, workspace_id)?;
 
     if projects.is_empty() {
-        println!(
-            "\x1b[33m⚠\x1b[0m No projects found in workspace '\x1b[33m{}\x1b[0m'",
-            workspace
-        );
+        CliFormatter::print_warning(&format!("No projects found in workspace '{}'", workspace));
         return Ok(());
     }
 
-    println!("\x1b[36m┌─────────────────────────────────────────┐\x1b[0m");
-    println!("\x1b[36m│\x1b[0m        \x1b[1;37mWorkspace Projects\x1b[0m               \x1b[36m│\x1b[0m");
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
-    println!(
-        "\x1b[36m│\x1b[0m Workspace: \x1b[33m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-        truncate_string(&workspace, 25)
+    CliFormatter::print_section_header("Workspace Projects");
+    CliFormatter::print_field(
+        "Workspace",
+        &truncate_string(&workspace, 60),
+        Some("yellow"),
     );
-    println!(
-        "\x1b[36m│\x1b[0m Projects:  \x1b[32m{:<25}\x1b[0m \x1b[36m│\x1b[0m",
-        format!("{} projects", projects.len())
+    CliFormatter::print_field(
+        "Projects",
+        &format!("{} projects", projects.len()),
+        Some("green"),
     );
-    println!("\x1b[36m├─────────────────────────────────────────┤\x1b[0m");
+    println!();
 
     for project in &projects {
         let status_indicator = if !project.is_archived {
-            "\x1b[32m●\x1b[0m"
+            ansi_color("green", "●", false)
         } else {
-            "\x1b[31m○\x1b[0m"
+            ansi_color("red", "○", false)
         };
-        println!(
-            "\x1b[36m│\x1b[0m {} \x1b[37m{:<33}\x1b[0m \x1b[36m│\x1b[0m",
-            status_indicator,
-            truncate_string(&project.name, 33)
-        );
+
+        let project_name = format!("{} {}", status_indicator, project.name);
+        CliFormatter::print_field("Project", &project_name, Some("cyan"));
+        if let Some(desc) = &project.description {
+            CliFormatter::print_field("Description", &truncate_string(desc, 60), None);
+        }
+        println!();
     }
 
-    println!("\x1b[36m└─────────────────────────────────────────┘\x1b[0m");
     Ok(())
 }
 
@@ -2409,7 +2488,11 @@ async fn delete_workspace(workspace: String) -> Result<()> {
     // Check if workspace has projects
     let projects = WorkspaceQueries::list_projects(&db.connection, workspace_id)?;
     if !projects.is_empty() {
-        CliFormatter::print_warning(&format!("Cannot delete workspace '{}' - it contains {} project(s). Remove projects first.", workspace, projects.len()));
+        CliFormatter::print_warning(&format!(
+            "Cannot delete workspace '{}' - it contains {} project(s). Remove projects first.",
+            workspace,
+            projects.len()
+        ));
         return Ok(());
     }
 
@@ -2801,7 +2884,8 @@ async fn handle_cat_command(
             squeeze_blank,
             show_tabs || show_tabs_only,
             show_nonprinting,
-        ).await;
+        )
+        .await;
     }
 
     for file_path in files {
@@ -2814,7 +2898,8 @@ async fn handle_cat_command(
                 squeeze_blank,
                 show_tabs || show_tabs_only,
                 show_nonprinting,
-            ).await?;
+            )
+            .await?;
         } else {
             read_file(
                 &file_path,
@@ -2825,13 +2910,13 @@ async fn handle_cat_command(
                 squeeze_blank,
                 show_tabs || show_tabs_only,
                 show_nonprinting,
-            ).await?;
+            )
+            .await?;
         }
     }
 
     Ok(())
 }
-
 
 async fn read_stdin(
     _show_all: bool,
@@ -2843,7 +2928,7 @@ async fn read_stdin(
     show_nonprinting: bool,
 ) -> Result<()> {
     use tokio::io::{self, AsyncBufReadExt, BufReader};
-    
+
     let stdin = io::stdin();
     let reader = BufReader::new(stdin);
     let mut lines = reader.lines();
@@ -2861,7 +2946,7 @@ async fn read_stdin(
         }
 
         let processed_line = process_line(&line, show_tabs, show_nonprinting, show_ends);
-        
+
         if number_nonblank && !line.trim().is_empty() {
             println!("{:6}\t{}", line_number, processed_line);
             line_number += 1;
@@ -2889,7 +2974,10 @@ async fn read_file(
     use tokio::fs::File;
     use tokio::io::{AsyncBufReadExt, BufReader};
 
-    let file = File::open(file_path).await.context(format!("cat: {}: No such file or directory", file_path.display()))?;
+    let file = File::open(file_path).await.context(format!(
+        "cat: {}: No such file or directory",
+        file_path.display()
+    ))?;
     let reader = BufReader::new(file);
     let mut lines = reader.lines();
     let mut line_number = 1;
@@ -2906,7 +2994,7 @@ async fn read_file(
         }
 
         let processed_line = process_line(&line, show_tabs, show_nonprinting, show_ends);
-        
+
         if number_nonblank && !line.trim().is_empty() {
             println!("{:6}\t{}", line_number, processed_line);
             line_number += 1;
@@ -2923,14 +3011,15 @@ async fn read_file(
 
 fn process_line(line: &str, show_tabs: bool, show_nonprinting: bool, show_ends: bool) -> String {
     let mut result = line.to_string();
-    
+
     if show_tabs {
         result = result.replace('\t', "^I");
     }
-    
+
     if show_nonprinting {
-        result = result.chars().map(|c| {
-            match c {
+        result = result
+            .chars()
+            .map(|c| match c {
                 '\t' if !show_tabs => c.to_string(),
                 '\n' => c.to_string(),
                 c if c.is_control() => {
@@ -2941,13 +3030,13 @@ fn process_line(line: &str, show_tabs: bool, show_nonprinting: bool, show_ends: 
                     }
                 }
                 c => c.to_string(),
-            }
-        }).collect();
+            })
+            .collect();
     }
-    
+
     if show_ends {
         result.push('$');
     }
-    
+
     result
 }

@@ -11,7 +11,12 @@ impl CliFormatter {
             Some(c) => ansi_color(c, value, false),
             None => value.to_string(),
         };
-        println!("  {:<12} {}", format!("{}:", label).dimmed(), colored_value);
+        println!(
+            "{} {:<20} {}",
+            "│".dimmed(),
+            format!("{}:", label).dimmed(),
+            colored_value
+        );
     }
 
     pub fn print_field_bold(label: &str, value: &str, color: Option<&str>) {
@@ -19,7 +24,12 @@ impl CliFormatter {
             Some(c) => ansi_color(c, value, true),
             None => bold(value),
         };
-        println!("  {:<12} {}", format!("{}:", label).dimmed(), colored_value);
+        println!(
+            "{} {:<20} {}",
+            "│".dimmed(),
+            format!("{}:", label).dimmed(),
+            colored_value
+        );
     }
 
     pub fn print_status(status: &str, is_active: bool) {
@@ -29,7 +39,8 @@ impl CliFormatter {
             ("○", "red")
         };
         println!(
-            "  {:<12} {} {}",
+            "{} {:<20} {} {}",
+            "│".dimmed(),
             "Status:".dimmed(),
             ansi_color(color, symbol, false),
             ansi_color(color, status, true)
@@ -107,6 +118,31 @@ impl CliFormatter {
 
     pub fn print_info(message: &str) {
         println!("  {} {}", ansi_color("cyan", "ℹ", true), message);
+    }
+
+    pub fn print_block_line(label: &str, value: &str) {
+        println!(
+            "{} {:<20} {}",
+            "│".dimmed(),
+            format!("{}:", label).dimmed(),
+            value
+        );
+    }
+
+    pub fn print_daemon_start(version: &str) {
+        println!(
+            "{}",
+            format!("Starting Tempo Daemon (v{})...", version).dimmed()
+        );
+    }
+
+    pub fn print_daemon_success(pid: u32, info: &str) {
+        let msg = format!("Daemon active. PID: {} [{}]", pid, info);
+        println!(
+            "{} {}",
+            ansi_color("green", "✓", true),
+            ansi_color("green", &msg, false)
+        );
     }
 }
 
